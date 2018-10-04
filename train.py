@@ -171,6 +171,8 @@ if __name__ == '__main__':
 
     train_dataSet = prepare_train_data_set(**cfg['data'], **cfg['model'])
 
+    print("Length of trainset: {}".format(len(train_dataSet)))
+
     my_model = build_model(cfg, train_dataSet)
 
     model = my_model
@@ -220,6 +222,8 @@ if __name__ == '__main__':
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
     my_model.train()
+
+    print("Length of data reader train: {}".format(len(data_reader_trn)))
 
     print("BEGIN TRAINING...")
     one_stage_train(my_model,

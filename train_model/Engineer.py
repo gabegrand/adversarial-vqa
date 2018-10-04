@@ -127,6 +127,8 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
     snapshot_timer = Timer('m')
     report_timer = Timer('s')
 
+    print("MAX ITER: {}".format(max_iter))
+
     while i_iter < max_iter:
         iepoch += 1
         for i, batch in enumerate(data_reader_trn):
