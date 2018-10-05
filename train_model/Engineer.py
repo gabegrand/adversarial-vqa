@@ -14,6 +14,7 @@ from torch.autograd import Variable
 from global_variables.global_variables import use_cuda
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 from config.config import cfg
 from tools.timer import Timer
 
@@ -190,20 +191,20 @@ def compute_a_batch(batch, my_model, eval_mode, loss_criterion=None, add_graph=F
         obs_res = obs_res.cuda()
 
     n_sample = obs_res.size(0)
-    logit_res = one_stage_run_model(batch, my_model, eval_mode, add_graph, log_dir)
+    logit_res, joint_embedding = one_stage_run_model(batch, my_model, eval_mode, add_graph, log_dir)
     predicted_scores = torch.sum(compute_score_with_logits(logit_res, obs_res.data))
 
-    total_loss = None if loss_criterion is None else loss_criterion(logit_res, obs_res)
+    # total_loss = None if loss_criterion is None else loss_criterion(logit_res, obs_res)
 
-    return predicted_scores, total_loss, n_sample
+    return logit_res, joint_embedding, predicted_scores, n_sample
 
 
 def one_stage_eval_model(data_reader_eval, myModel, loss_criterion=None):
     score_tot = 0
     n_sample_tot = 0
     loss_tot = 0
-    for idx, batch in enumerate(data_reader_eval):
-        score, loss, n_sample = compute_a_batch(batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+    for batch in tqdm(data_reader_eval):
+        _, _, score, loss, n_sample = compute_a_batch(batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
@@ -246,9 +247,8 @@ def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=Non
         image_feat_variables.append(tmp_image_variable)
         i += 1
 
-    logit_res = my_model(input_question_variable=input_txt_variable,
-                         image_dim_variable=image_dim_variable,
-                         image_feat_variables=image_feat_variables)
+    logit_res, joint_embedding = my_model(input_question_variable=input_txt_variable,
+                                          image_dim_variable=image_dim_variable,
+                                          image_feat_variables=image_feat_variables)
 
-    return logit_res
-
+    return logit_res, joint_embedding

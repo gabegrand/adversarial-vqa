@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-
+import h5py
 import timeit
 import argparse
 import random
@@ -19,9 +19,9 @@ from config.config import cfg
 from global_variables.global_variables import use_cuda
 from train_model.dataset_utils import prepare_train_data_set, \
     prepare_eval_data_set, prepare_test_data_set
-from train_model.helper import build_model, run_model, print_result
+from train_model.helper import build_model, z_saver, print_result
 from train_model.Loss import get_loss_criterion
-from train_model.Engineer import one_stage_train
+from train_model.Engineer import one_stage_train, one_stage_eval_model
 import glob
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -50,6 +50,8 @@ def parse_args():
     parser.add_argument("--force_restart", action='store_true',
                         help="flag to force clean previous"
                         "result and restart training")
+    parser.add_argument("--z_saver", action='store_true',
+                        help="save z vectors to disk")
 
     arguments = parser.parse_args()
     return arguments
@@ -99,35 +101,73 @@ def get_optim_scheduler(optimizer):
     return LambdaLR(optimizer, lr_lambda=lr_lambda_fun)
 
 
-def print_eval(prepare_data_fun, out_label):
+# def print_eval(prepare_data_fun, out_label):
+#     model_file = os.path.join(snapshot_dir, "best_model.pth")
+#     pkl_res_file = os.path.join(snapshot_dir,
+#                                 "best_model_predict_%s.pkl" % out_label)
+#     out_file = os.path.join(snapshot_dir,
+#                             "best_model_predict_%s.json" % out_label)
+#
+#     data_set_test = prepare_data_fun(**cfg['data'],
+#                                      **cfg['model'],
+#                                      verbose=True)
+#     data_reader_test = DataLoader(data_set_test,
+#                                   shuffle=False,
+#                                   batch_size=cfg.data.batch_size,
+#                                   num_workers=cfg.data.num_workers)
+#     ans_dic = data_set_test.answer_dict
+#
+#     model = build_model(cfg, data_set_test)
+#     model.load_state_dict(torch.load(model_file)['state_dict'])
+#     model.eval()
+#
+#     question_ids, soft_max_result = run_model(model,
+#                                               data_reader_test,
+#                                               ans_dic.UNK_idx)
+#     print_result(question_ids,
+#                  soft_max_result,
+#                  ans_dic,
+#                  out_file,
+#                  json_only=False,
+#                  pkl_res_file=pkl_res_file)
+
+
+def save_z_vectors(prepare_data_fun, out_label):
     model_file = os.path.join(snapshot_dir, "best_model.pth")
     pkl_res_file = os.path.join(snapshot_dir,
                                 "best_model_predict_%s.pkl" % out_label)
     out_file = os.path.join(snapshot_dir,
                             "best_model_predict_%s.json" % out_label)
 
-    data_set_test = prepare_data_fun(**cfg['data'],
+    print("=> Loading dataset...")
+    dataset = prepare_data_fun(**cfg['data'],
                                      **cfg['model'],
                                      verbose=True)
-    data_reader_test = DataLoader(data_set_test,
+    print("Len dataset {}".format(len(dataset)))
+    data_reader = DataLoader(dataset,
                                   shuffle=False,
                                   batch_size=cfg.data.batch_size,
                                   num_workers=cfg.data.num_workers)
-    ans_dic = data_set_test.answer_dict
+    print("Len data reader {}".format(len(data_reader)))
+    ans_dic = dataset.answer_dict
 
-    model = build_model(cfg, data_set_test)
+    print("=> Loading model...")
+    model = build_model(cfg, dataset)
     model.load_state_dict(torch.load(model_file)['state_dict'])
     model.eval()
 
-    question_ids, soft_max_result = run_model(model,
-                                              data_reader_test,
-                                              ans_dic.UNK_idx)
-    print_result(question_ids,
-                 soft_max_result,
-                 ans_dic,
-                 out_file,
-                 json_only=False,
-                 pkl_res_file=pkl_res_file)
+    print("=> Running eval...")
+    fname = os.path.join(snapshot_dir, "z_{}.hdf5".format(out_label))
+    hdf5_file = h5py.File(fname, "w")
+    hdf5_z = hdf5_file.create_dataset('z', (len(dataset), 5000), dtype='f')
+
+    q_id_tot, acc, n_sample_tot = z_saver(model, data_reader, hdf5_z, ans_dic.UNK_idx)
+
+    hdf5_file.close()
+
+    print("Acc: {:.4f}\nTotal samples: {}".format(float(acc), n_sample_tot))
+
+    print(len(q_id_tot))
 
 
 if __name__ == '__main__':
@@ -165,6 +205,12 @@ if __name__ == '__main__':
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
+    # save_z_vectors(prepare_train_data_set, "train")
+
+    save_z_vectors(prepare_eval_data_set, "eval")
+    print("total runtime(h): %s" % prg_timer.end())
+
+"""
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")
     dump_config(cfg, config_to_write)
@@ -224,20 +270,19 @@ if __name__ == '__main__':
     my_model.train()
 
     print("Length of data reader train: {}".format(len(data_reader_trn)))
+"""
 
-    print("BEGIN TRAINING...")
-    one_stage_train(my_model,
-                    data_reader_trn,
-                    my_optim, my_loss, data_reader_eval=data_reader_val,
-                    snapshot_dir=snapshot_dir, log_dir=boards_dir,
-                    start_epoch=i_epoch, i_iter=i_iter,
-                    scheduler=scheduler,best_val_accuracy=best_accuracy)
-
-    print("BEGIN PREDICTING ON TEST/VAL set...")
-
-    if 'predict' in cfg.run:
-        print_eval(prepare_test_data_set, "test")
-    if cfg.run == 'train+val':
-        print_eval(prepare_eval_data_set, "val")
-
-    print("total runtime(h): %s" % prg_timer.end())
+    # print("BEGIN TRAINING...")
+    # one_stage_train(my_model,
+    #                 data_reader_trn,
+    #                 my_optim, my_loss, data_reader_eval=data_reader_val,
+    #                 snapshot_dir=snapshot_dir, log_dir=boards_dir,
+    #                 start_epoch=i_epoch, i_iter=i_iter,
+    #                 scheduler=scheduler,best_val_accuracy=best_accuracy)
+    #
+    # print("BEGIN PREDICTING ON TEST/VAL set...")
+    #
+    # if 'predict' in cfg.run:
+    #     print_eval(prepare_test_data_set, "test")
+    # if cfg.run == 'train+val':
+    #     print_eval(prepare_eval_data_set, "val")

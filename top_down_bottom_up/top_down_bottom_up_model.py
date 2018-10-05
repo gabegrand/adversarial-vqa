@@ -112,4 +112,4 @@ class vqa_multi_modal_model(nn.Module):
             image_embedding_total, question_embedding_total)
         logit_res = self.classifier(joint_embedding)
 
-        return logit_res
+        return logit_res, joint_embedding
