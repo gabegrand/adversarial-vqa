@@ -69,7 +69,7 @@ class WeightNormClassifier(nn.Module):
 
 
 class LinearClassifier(nn.Module):
-    def __init__(self, in_dim, out_dim):
+    def __init__(self, in_dim, out_dim, **kwargs):
         super(LinearClassifier, self).__init__()
         self.lc = nn.Linear(in_dim, out_dim)
 

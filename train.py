@@ -19,7 +19,7 @@ from config.config import cfg
 from global_variables.global_variables import use_cuda
 from train_model.dataset_utils import prepare_train_data_set, \
     prepare_eval_data_set, prepare_test_data_set
-from train_model.helper import build_model, run_model, print_result
+from train_model.helper import build_model, run_model, print_result, build_adversary
 from train_model.Loss import get_loss_criterion
 from train_model.Engineer import one_stage_train
 import glob
@@ -173,6 +173,7 @@ if __name__ == '__main__':
 
     print("Length of trainset: {}".format(len(train_dataSet)))
 
+    print("=> Building model")
     my_model = build_model(cfg, train_dataSet)
 
     model = my_model
@@ -188,6 +189,13 @@ if __name__ == '__main__':
 
     my_optim = getattr(optim, cfg.optimizer.method)(
         params, **cfg.optimizer.par)
+
+    #TODO: Pass in 'lr' here?
+    adv_params = [{'params': model.question_embedding_models.parameters()},
+                  {'params': model.adversarial_classifier.parameters()}]
+
+    adv_optim = getattr(optim, cfg.optimizer.method)(
+        adv_params, **cfg.optimizer.par)
 
     i_epoch = 0
     i_iter = 0
@@ -222,13 +230,14 @@ if __name__ == '__main__':
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
     my_model.train()
+    # my_adversary.train()
 
     print("Length of data reader train: {}".format(len(data_reader_trn)))
 
     print("BEGIN TRAINING...")
     one_stage_train(my_model,
                     data_reader_trn,
-                    my_optim, my_loss, data_reader_eval=data_reader_val,
+                    my_optim, adv_optim, my_loss, data_reader_eval=data_reader_val,
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
                     scheduler=scheduler,best_val_accuracy=best_accuracy)

@@ -89,11 +89,20 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         in_dim=joint_embedding_dim,
         out_dim=num_choices)
 
+    adversarial_classifier = build_classifier(
+        "linear_classifier",
+        model_config['classifier']['par'],
+        in_dim=final_question_embeding_dim,
+        out_dim=num_choices)
+
     my_model = vqa_multi_modal_model(
         image_emdedding_models_list,
         question_embeding_models,
         multi_modal_combine,
-        classifier, image_feature_encode_list, inter_model)
+        classifier, 
+        adversarial_classifier,
+        image_feature_encode_list, 
+        inter_model)
 
     if use_cuda:
         my_model = my_model.cuda()
@@ -102,3 +111,22 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         my_model = nn.DataParallel(my_model)
 
     return my_model
+
+
+def prepare_adversarial_classifier(num_vocab_txt, num_choices, **model_config):
+
+    # generate the classifier
+    classifier = build_classifier(
+        "linear_classifier",
+        model_config['classifier']['par'],
+        in_dim=model_config['classifier']['par']['txt_hidden_dim'],
+        out_dim=num_choices)
+
+    if use_cuda:
+        classifier = classifier.cuda()
+
+    if torch.cuda.device_count() > 1:
+        classifier = nn.DataParallel(classifier)
+
+    return classifier
+

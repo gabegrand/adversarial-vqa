@@ -5,6 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 #
 
+from torchviz import make_dot
+from graphviz import Digraph
 
 import torch
 import torch.nn as nn
@@ -54,7 +56,7 @@ def clip_gradients(myModel, i_iter, writer):
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
                   myModel, loss_criterion):
     val_batch = next(iter(data_reader_eval))
-    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+    val_score, adv_score, val_loss, adv_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
     print("iter:", i_iter, "train_loss: %.4f" % train_loss, " train_score: %.4f" % train_acc,
@@ -69,7 +71,12 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
     writer.add_scalar('val_score', val_score, i_iter)
     writer.add_scalar('val_loss', val_loss.data[0], i_iter)
     for name, param in myModel.named_parameters():
-        writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
+        try:
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
+        except:
+            # TODO: bug fix
+            print("Failed to add histogram:")
+            print(name, param.clone().cpu().data.numpy())
 
 
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_criterion, best_val_accuracy,
@@ -110,7 +117,7 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_cri
     return best_val_accuracy, best_epoch, best_iter
 
 
-def one_stage_train(myModel, data_reader_trn, my_optimizer,
+def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
                     scheduler=None):
@@ -119,6 +126,7 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
     max_iter = cfg.training_parameters.max_iter
 
     avg_accuracy = 0
+    avg_adv_accuracy = 0
     accuracy_decay = 0.99
     best_epoch = 0
     writer = SummaryWriter(log_dir)
@@ -139,16 +147,27 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
             scheduler.step(i_iter)
 
             my_optimizer.zero_grad()
+            adv_optimizer.zero_grad()
             add_graph = False
-            scores, total_loss, n_sample = compute_a_batch(batch, myModel, eval_mode=False,
-                                                           loss_criterion=loss_criterion,
-                                                           add_graph=add_graph, log_dir=log_dir)
+            scores, adv_scores, total_loss, adv_loss, n_sample = compute_a_batch(batch, myModel, eval_mode=False,
+                                                                                 loss_criterion=loss_criterion,
+                                                                                 add_graph=add_graph, log_dir=log_dir)
+
+            # TODO: more efficient implementation that doesn't require graph retention
+            # total_loss.backward(retain_graph=True)
             total_loss.backward()
             accuracy = scores / n_sample
             avg_accuracy += (1 - accuracy_decay) * (accuracy - avg_accuracy)
 
             clip_gradients(myModel, i_iter, writer)
             my_optimizer.step()
+
+            # adv_loss.backward()
+            # adv_accuracy = adv_scores / n_sample
+            # avg_adv_accuracy += (1 - accuracy_decay) * (adv_accuracy - avg_adv_accuracy)
+
+            # clip_gradients(myModel, i_iter, writer)
+            # adv_optimizer.step()
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, total_loss.data[0], accuracy, avg_accuracy, report_timer,
@@ -190,12 +209,14 @@ def compute_a_batch(batch, my_model, eval_mode, loss_criterion=None, add_graph=F
         obs_res = obs_res.cuda()
 
     n_sample = obs_res.size(0)
-    logit_res = one_stage_run_model(batch, my_model, eval_mode, add_graph, log_dir)
+    logit_res, logit_adv = one_stage_run_model(batch, my_model, eval_mode, add_graph, log_dir)
     predicted_scores = torch.sum(compute_score_with_logits(logit_res, obs_res.data))
+    adv_scores = torch.sum(compute_score_with_logits(logit_adv, obs_res.data))
 
     total_loss = None if loss_criterion is None else loss_criterion(logit_res, obs_res)
+    adv_loss = None if loss_criterion is None else loss_criterion(logit_adv, obs_res)
 
-    return predicted_scores, total_loss, n_sample
+    return predicted_scores, adv_scores, total_loss, adv_loss, n_sample
 
 
 def one_stage_eval_model(data_reader_eval, myModel, loss_criterion=None):
@@ -203,7 +224,7 @@ def one_stage_eval_model(data_reader_eval, myModel, loss_criterion=None):
     n_sample_tot = 0
     loss_tot = 0
     for idx, batch in enumerate(data_reader_eval):
-        score, loss, n_sample = compute_a_batch(batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+        score, adv_score, loss, adv_loss, n_sample = compute_a_batch(batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
@@ -246,9 +267,11 @@ def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=Non
         image_feat_variables.append(tmp_image_variable)
         i += 1
 
-    logit_res = my_model(input_question_variable=input_txt_variable,
-                         image_dim_variable=image_dim_variable,
-                         image_feat_variables=image_feat_variables)
+    logit_res, logit_adv = my_model(input_question_variable=input_txt_variable,
+                           image_dim_variable=image_dim_variable,
+                           image_feat_variables=image_feat_variables)
 
-    return logit_res
+    # g = make_dot(logit_res, params=dict(my_model.named_parameters()))
+
+    return logit_res, logit_adv
 
