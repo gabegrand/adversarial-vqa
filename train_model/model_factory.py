@@ -111,22 +111,3 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         my_model = nn.DataParallel(my_model)
 
     return my_model
-
-
-def prepare_adversarial_classifier(num_vocab_txt, num_choices, **model_config):
-
-    # generate the classifier
-    classifier = build_classifier(
-        "linear_classifier",
-        model_config['classifier']['par'],
-        in_dim=model_config['classifier']['par']['txt_hidden_dim'],
-        out_dim=num_choices)
-
-    if use_cuda:
-        classifier = classifier.cuda()
-
-    if torch.cuda.device_count() > 1:
-        classifier = nn.DataParallel(classifier)
-
-    return classifier
-

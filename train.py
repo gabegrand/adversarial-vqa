@@ -19,7 +19,7 @@ from config.config import cfg
 from global_variables.global_variables import use_cuda
 from train_model.dataset_utils import prepare_train_data_set, \
     prepare_eval_data_set, prepare_test_data_set
-from train_model.helper import build_model, run_model, print_result, build_adversary
+from train_model.helper import build_model, run_model, print_result
 from train_model.Loss import get_loss_criterion
 from train_model.Engineer import one_stage_train
 import glob
@@ -195,7 +195,7 @@ if __name__ == '__main__':
                   {'params': model.adversarial_classifier.parameters()}]
 
     adv_optim = getattr(optim, cfg.optimizer.method)(
-        adv_params, **cfg.optimizer.par)
+        adv_params, **cfg.adv_optimizer.par)
 
     i_epoch = 0
     i_iter = 0
@@ -230,7 +230,6 @@ if __name__ == '__main__':
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
     my_model.train()
-    # my_adversary.train()
 
     print("Length of data reader train: {}".format(len(data_reader_trn)))
 

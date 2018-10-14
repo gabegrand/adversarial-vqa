@@ -79,6 +79,9 @@ __C.loss = 'logitBCE'
 # --------------------------------------------------------------------------- #
 __C.optimizer = ModelParPair('Adamax')
 
+__C.adv_optimizer = ModelParPair('Adamax')
+__C.adv_optimizer.par.lr = 0.001
+
 
 # --------------------------------------------------------------------------- #
 # model options: Note default is our

@@ -11,7 +11,7 @@ import timeit
 import sys
 import numpy as np
 from train_model.Engineer import one_stage_run_model, masked_unk_softmax
-from train_model.model_factory import prepare_model, prepare_adversarial_classifier
+from train_model.model_factory import prepare_model
 
 
 class answer_json:

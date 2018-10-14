@@ -38,45 +38,79 @@ def compute_score_with_logits(logits, labels):
     return scores
 
 
-def clip_gradients(myModel, i_iter, writer):
+def clip_gradients(myModel, i_iter, writer=None):
     max_grad_l2_norm = cfg.training_parameters.max_grad_l2_norm
     clip_norm_mode = cfg.training_parameters.clip_norm_mode
     if max_grad_l2_norm is not None:
         if clip_norm_mode == 'all':
-            norm = nn.utils.clip_grad_norm(myModel.parameters(), max_grad_l2_norm)
-            writer.add_scalar('grad_norm', norm, i_iter)
+            norm = nn.utils.clip_grad_norm_(myModel.parameters(), max_grad_l2_norm)
+            if writer:
+                writer.add_scalar('grad_norm', norm, i_iter)
         elif clip_norm_mode == 'question':
-            norm = nn.utils.clip_grad_norm(myModel.module.question_embedding_models.parameters(),
+            norm = nn.utils.clip_grad_norm_(myModel.module.question_embedding_models.parameters(),
                                             max_grad_l2_norm)
-            writer.add_scalar('question_grad_norm', norm, i_iter)
+            if writer:
+                writer.add_scalar('question_grad_norm', norm, i_iter)
         else:
             raise NotImplementedError
 
 
-def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
-                  myModel, loss_criterion):
-    val_batch = next(iter(data_reader_eval))
-    val_score, adv_score, val_loss, adv_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
-    val_acc = val_score / n_val_sample
+def check_params_and_grads(myModel):
+    params_ok = True
+    for name, param in myModel.named_parameters():
+        if torch.isnan(param).any():
+            params_ok = False
+            print("NaN detected in param: {}".format(name))
 
-    print("iter:", i_iter, "train_loss: %.4f" % train_loss, " train_score: %.4f" % train_acc,
-          " avg_train_score: %.4f" % train_avg_acc, "val_score: %.4f" % val_acc,
-          "val_loss: %.4f" % val_loss.data[0], "time(s): % s" % report_timer.end())
+        if param.grad is not None:
+            if torch.isnan(param.grad).any():
+                params_ok = False
+                print("NaN detected in grad: {}".format(name))
+            if param.grad.gt(1e6).any():
+                params_ok = False
+                print("Exploding grad: {}".format(name))
+        else:
+            print("No grad: {} ({})".format(name, param.grad))
+    return params_ok
+
+
+def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, 
+                  adv_train_loss, adv_train_acc, adv_train_avg_acc, 
+                  report_timer, writer, data_reader_eval, myModel, loss_criterion):
+    val_batch = next(iter(data_reader_eval))
+    val_score, adv_val_score, val_loss, adv_val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+    val_acc = val_score / n_val_sample
+    adv_val_acc = adv_val_score / n_val_sample
+
+    print("iter:", i_iter, 
+          "time(s): % s \n" % report_timer.end(),
+          "Main model: train_loss: %.4f" % train_loss, 
+          "train_score: %.4f" % train_acc,
+          "avg_train_score: %.4f" % train_avg_acc, 
+          "val_score: %.4f" % val_acc,
+          "val_loss: %.4f \n" % val_loss.item(),
+          "Advs model: train_loss: %.4f" % adv_train_loss, 
+          "train_score: %.4f" % adv_train_acc,
+          "avg_train_score: %.4f" % adv_train_avg_acc, 
+          "val_score: %.4f" % adv_val_acc,
+          "val_loss: %.4f" % adv_val_loss.item(),
+          )
     sys.stdout.flush()
     report_timer.start()
 
-    writer.add_scalar('train_loss', train_loss, i_iter)
-    writer.add_scalar('train_score', train_acc, i_iter)
-    writer.add_scalar('train_score_avg', train_avg_acc, i_iter)
-    writer.add_scalar('val_score', val_score, i_iter)
-    writer.add_scalar('val_loss', val_loss.data[0], i_iter)
+    writer.add_scalar('loss/train', train_loss, i_iter)
+    writer.add_scalar('score/train', train_acc, i_iter)
+    writer.add_scalar('score_avg/train', train_avg_acc, i_iter)
+    writer.add_scalar('score/val', val_score, i_iter)
+    writer.add_scalar('loss/val', val_loss.item(), i_iter)
+
+    writer.add_scalar('adv/loss/train', adv_train_loss, i_iter)
+    writer.add_scalar('adv/score/train', adv_train_acc, i_iter)
+    writer.add_scalar('adv/score_avg/train', adv_train_avg_acc, i_iter)
+    writer.add_scalar('adv/score/val', adv_val_score, i_iter)
+    writer.add_scalar('adv/loss/val', adv_val_loss.item(), i_iter)
     for name, param in myModel.named_parameters():
-        try:
-            writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
-        except:
-            # TODO: bug fix
-            print("Failed to add histogram:")
-            print(name, param.clone().cpu().data.numpy())
+        writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
 
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_criterion, best_val_accuracy,
@@ -121,7 +155,8 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
                     scheduler=None):
-    report_interval = cfg.training_parameters.report_interval
+    # report_interval = cfg.training_parameters.report_interval
+    report_interval = 10
     snapshot_interval = cfg.training_parameters.snapshot_interval
     max_iter = cfg.training_parameters.max_iter
 
@@ -153,25 +188,24 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
                                                                                  loss_criterion=loss_criterion,
                                                                                  add_graph=add_graph, log_dir=log_dir)
 
-            # TODO: more efficient implementation that doesn't require graph retention
-            # total_loss.backward(retain_graph=True)
-            total_loss.backward()
+            # TODO: is there a more efficient implementation that doesn't require retain_graph?
+            total_loss.backward(retain_graph=True)
             accuracy = scores / n_sample
             avg_accuracy += (1 - accuracy_decay) * (accuracy - avg_accuracy)
-
             clip_gradients(myModel, i_iter, writer)
             my_optimizer.step()
 
-            # adv_loss.backward()
-            # adv_accuracy = adv_scores / n_sample
-            # avg_adv_accuracy += (1 - accuracy_decay) * (adv_accuracy - avg_adv_accuracy)
+            adv_loss.backward()
+            adv_accuracy = adv_scores / n_sample
+            avg_adv_accuracy += (1 - accuracy_decay) * (adv_accuracy - avg_adv_accuracy)
+            clip_gradients(myModel, i_iter, writer=None)
+            adv_optimizer.step()
 
-            # clip_gradients(myModel, i_iter, writer)
-            # adv_optimizer.step()
+            check_params_and_grads(myModel)
 
             if i_iter % report_interval == 0:
-                save_a_report(i_iter, total_loss.data[0], accuracy, avg_accuracy, report_timer,
-                              writer, data_reader_eval,myModel, loss_criterion)
+                save_a_report(i_iter, total_loss.item(), accuracy, avg_accuracy, adv_loss, adv_accuracy, avg_adv_accuracy, 
+                              report_timer, writer, data_reader_eval,myModel, loss_criterion)
 
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, myModel,
@@ -198,7 +232,7 @@ def evaluate_a_batch(batch, myModel, loss_criterion):
                                  input_answers_variable.data))
     total_loss = loss_criterion(logit_res, input_answers_variable)
 
-    return predicted_scores / n_sample, total_loss.data[0]
+    return predicted_scores / n_sample, total_loss.item()
 
 
 def compute_a_batch(batch, my_model, eval_mode, loss_criterion=None, add_graph=False, log_dir=None):
@@ -228,7 +262,7 @@ def one_stage_eval_model(data_reader_eval, myModel, loss_criterion=None):
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
-            loss_tot += loss.data[0] * n_sample
+            loss_tot += loss.item() * n_sample
     return score_tot / n_sample_tot, loss_tot / n_sample_tot, n_sample_tot
 
 
