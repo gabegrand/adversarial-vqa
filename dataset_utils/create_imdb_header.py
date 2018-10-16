@@ -7,7 +7,11 @@
 
 
 import datetime
-from global_variables.global_variables import imdb_version
+import sys
+
+sys.path.append('/home/ubuntu/pythia/global_variables/')
+sys.path.append('/home/ubuntu/pythia/global_variables/global_variables.py')
+from global_variables import imdb_version
 
 
 def create_header(dataset_name, has_answer, has_gt_layout):
