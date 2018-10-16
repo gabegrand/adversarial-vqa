@@ -12,6 +12,7 @@ from dataset_utils.vqa_concate_dataset import vqa_concate_dataset
 
 
 def prepare_data_set(imdb_file_label, image_dir_label, **data_config):
+
     # get the potential shared data_config info
     data_root_dir = data_config['data_root_dir']
     vocab_question_file = os.path.join(
@@ -37,33 +38,58 @@ def prepare_data_set(imdb_file_label, image_dir_label, **data_config):
 
     imdb_files = data_config[imdb_file_label]
     image_feat_dirs = data_config[image_dir_label]
-    assert len(imdb_files) == len(image_feat_dirs), \
-        image_dir_label + "has different length with " + image_dir_label
+
     image_max_loc = data_config['image_max_loc'] \
         if 'image_max_loc' in data_config else None
 
-    datasets = []
-    for imdb_file_trn_name, image_feat_dir in zip(imdb_files, image_feat_dirs):
-        imdb_file_trn = os.path.join(data_root_dir, imdb_file_trn_name)
-        image_feat_dirs = [os.path.join(data_root_dir, d)
-                           for d in image_feat_dir.split(',')]
+    if len(imdb_files) == len(image_feat_dirs):
+        datasets = []
+        for imdb_file_trn_name, image_feat_dir in zip(imdb_files, image_feat_dirs):
+            imdb_file_trn = os.path.join(data_root_dir, imdb_file_trn_name)
+            image_feat_dirs = [os.path.join(data_root_dir, d)
+                               for d in image_feat_dir.split(',')]
 
-        train_dataset = vqa_dataset(imdb_file=imdb_file_trn,
-                                    image_feat_directories=image_feat_dirs,
-                                    T_encoder=question_max_len,
-                                    T_decoder=layout_max_len,
-                                    assembler=None,
-                                    vocab_question_file=vocab_question_file,
-                                    vocab_answer_file=vocab_answer_file,
-                                    prune_filter_module=prune_filter_module,
-                                    image_depth_first=image_depth_first,
-                                    fastRead=image_fast_reader,
-                                    verbose=verbose,
-                                    test_mode=test_mode,
-                                    image_max_loc=image_max_loc)
-        datasets.append(train_dataset)
-
-    dataset = vqa_concate_dataset(datasets)
+            train_dataset = vqa_dataset(imdb_file=imdb_file_trn,
+                                        image_feat_directories=image_feat_dirs,
+                                        cp=False,
+                                        T_encoder=question_max_len,
+                                        T_decoder=layout_max_len,
+                                        assembler=None,
+                                        vocab_question_file=vocab_question_file,
+                                        vocab_answer_file=vocab_answer_file,
+                                        prune_filter_module=prune_filter_module,
+                                        image_depth_first=image_depth_first,
+                                        fastRead=image_fast_reader,
+                                        verbose=verbose,
+                                        test_mode=test_mode,
+                                        image_max_loc=image_max_loc)
+            datasets.append(train_dataset)
+        dataset = vqa_concate_dataset(datasets)
+    else:
+        if 'cp' in data_config['dataset']:
+            print('=> Loading CP dataset')
+            assert(len(imdb_files) == 1)
+            imdb_file_trn = os.path.join(data_root_dir, imdb_files[0])
+            image_feat_dirs = [os.path.join(data_root_dir, d)
+                               for d in image_feat_dirs]
+            dataset = vqa_dataset(imdb_file=imdb_file_trn,
+                                  image_feat_directories=image_feat_dirs,
+                                  cp=True,
+                                  T_encoder=question_max_len,
+                                  T_decoder=layout_max_len,
+                                  assembler=None,
+                                  vocab_question_file=vocab_question_file,
+                                  vocab_answer_file=vocab_answer_file,
+                                  prune_filter_module=prune_filter_module,
+                                  image_depth_first=image_depth_first,
+                                  fastRead=image_fast_reader,
+                                  verbose=verbose,
+                                  test_mode=test_mode,
+                                  image_max_loc=image_max_loc)
+        else:
+            raise ValueError('Mismatch between {} and {}'.format(
+                imdb_files, image_feat_dirs
+            ))
 
     return dataset
 

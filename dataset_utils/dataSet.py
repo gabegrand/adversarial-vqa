@@ -108,14 +108,28 @@ def compute_answer_scores(answers, num_of_answers, unk_idx):
     return scores
 
 
-def read_in_image_feats(image_dirs, image_readers, image_file_name):
+def read_in_image_feats(image_dirs, image_readers, image_file_name, cp=False):
     image_feats = []
-    for i, image_dir in enumerate(image_dirs):
-        image_feat_path = os.path.join(image_dir, image_file_name)
-        tmp_image_feat = image_readers[i].read(image_feat_path)
-        image_feats.append(tmp_image_feat)
-
+    if cp:
+        image_feat_path = get_cp_feat_path(image_dirs, image_file_name)
+        image_feats.append(image_readers[0].read(image_feat_path))
+    else:
+        for i, image_dir in enumerate(image_dirs):
+            image_feat_path = os.path.join(image_dir, image_file_name)
+            tmp_image_feat = image_readers[i].read(image_feat_path)
+            image_feats.append(tmp_image_feat)
     return image_feats
+
+
+def get_cp_feat_path(image_dirs, image_file_name):
+    if 'train2014' in image_file_name:
+        dir = image_dirs[['train2014' in d for d in image_dirs].index(True)]
+    elif 'val2014' in image_file_name:
+        dir = image_dirs[['val2014' in d for d in image_dirs].index(True)]
+    else:
+        raise ValueError()
+
+    return os.path.join(dir, image_file_name)
 
 
 '''
@@ -136,6 +150,7 @@ class vqa_dataset(Dataset):
         self.imdb = imdb
         self.image_feat_directories = image_feat_directories
         self.data_params = data_params
+        self.cp = data_params['cp']
         self.image_depth_first = data_params['image_depth_first']
         self.image_max_loc = (data_params['image_max_loc']
                               if 'image_max_loc' in data_params else None)
@@ -179,7 +194,11 @@ class vqa_dataset(Dataset):
         for image_dir in self.image_feat_directories:
             image_file_name = os.path.basename(
                 self.imdb[self.first_element_idx]['feature_path'])
-            image_feat_path = os.path.join(image_dir, image_file_name)
+            if self.cp:
+                image_feat_path = get_cp_feat_path(self.image_feat_directories,
+                                                   image_file_name)
+            else:
+                image_feat_path = os.path.join(image_dir, image_file_name)
             feats = np.load(image_feat_path)
             self.image_feat_readers.append(get_image_feat_reader(
                 feats.ndim, self.image_depth_first, feats, self.image_max_loc))
@@ -198,7 +217,8 @@ class vqa_dataset(Dataset):
                     image_feats = read_in_image_feats(
                         self.image_feat_directories,
                         self.image_feat_readers,
-                        feat_file)
+                        feat_file,
+                        self.cp)
                     self.featDict[feat_file] = image_feats
                     image_count += 1
             print("load %d images" % image_count)
@@ -218,7 +238,8 @@ class vqa_dataset(Dataset):
             image_feats = read_in_image_feats(
                 self.image_feat_directories,
                 self.image_feat_readers,
-                image_file_name)
+                image_file_name,
+                self.cp)
 
         image_boxes = None
         image_loc = None
