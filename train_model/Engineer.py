@@ -57,17 +57,22 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
     val_score, val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
-    print("iter:", i_iter, "train_loss: %.4f" % train_loss, " train_score: %.4f" % train_acc,
-          " avg_train_score: %.4f" % train_avg_acc, "val_score: %.4f" % val_acc,
-          "val_loss: %.4f" % val_loss.data[0], "time(s): % s" % report_timer.end())
+    print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
+          "Main model: " + \
+          "train_loss: %.4f" % train_loss,
+          "train_score: %.4f" % train_acc,
+          "avg_train_score: %.4f" % train_avg_acc,
+          "val_score: %.4f" % val_acc,
+          "val_loss: %.4f" % val_loss.item()
+          )
     sys.stdout.flush()
     report_timer.start()
 
-    writer.add_scalar('train_loss', train_loss, i_iter)
-    writer.add_scalar('train_score', train_acc, i_iter)
-    writer.add_scalar('train_score_avg', train_avg_acc, i_iter)
-    writer.add_scalar('val_score', val_score, i_iter)
-    writer.add_scalar('val_loss', val_loss.data[0], i_iter)
+    writer.add_scalar('main/loss/train', train_loss, i_iter)
+    writer.add_scalar('main/score/train', train_acc, i_iter)
+    writer.add_scalar('main/score_avg/train', train_avg_acc, i_iter)
+    writer.add_scalar('main/score/val', val_acc, i_iter)
+    writer.add_scalar('main/loss/val', val_loss.item(), i_iter)
     for name, param in myModel.named_parameters():
         writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
@@ -251,4 +256,3 @@ def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=Non
                          image_feat_variables=image_feat_variables)
 
     return logit_res
-

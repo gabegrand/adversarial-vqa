@@ -11,6 +11,7 @@ import argparse
 import random
 import os
 import demjson
+import shutil
 import yaml
 from torch import optim
 from torch.utils.data import DataLoader
@@ -155,13 +156,17 @@ if __name__ == '__main__':
 
     snapshot_dir = os.path.join(out_dir, "results", middle_name, final_name)
     boards_dir = os.path.join(out_dir, "boards", middle_name, final_name)
+    if args.force_restart:
+        if os.path.exists(snapshot_dir):
+            shutil.rmtree(snapshot_dir)
+        if os.path.exists(boards_dir):
+            shutil.rmtree(boards_dir)
 
-    if not os.path.exists(snapshot_dir):
-        os.makedirs(snapshot_dir)
-    if not os.path.exists(boards_dir):
-        os.makedirs(boards_dir)
+    os.makedirs(snapshot_dir, exist_ok=True)
+    os.makedirs(boards_dir, exist_ok=True)
 
-    print("snapshot_dir=" + snapshot_dir)
+    print("Results: {}".format(snapshot_dir))
+    print("Tensorboard: {}".format(boards_dir))
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
