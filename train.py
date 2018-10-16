@@ -170,8 +170,7 @@ if __name__ == '__main__':
     dump_config(cfg, config_to_write)
 
     train_dataSet = prepare_train_data_set(**cfg['data'], **cfg['model'])
-
-    print("Length of trainset: {}".format(len(train_dataSet)))
+    print("=> Loaded trainset: {} examples".format(len(train_dataSet)))
 
     my_model = build_model(cfg, train_dataSet)
 
@@ -212,6 +211,7 @@ if __name__ == '__main__':
     my_loss = get_loss_criterion(cfg.loss)
 
     data_set_val = prepare_eval_data_set(**cfg['data'], **cfg['model'])
+    print("=> Loaded valset: {} examples".format(len(data_set_val)))
 
     data_reader_trn = DataLoader(dataset=train_dataSet,
                                  batch_size=cfg.data.batch_size,
@@ -223,9 +223,8 @@ if __name__ == '__main__':
                                  num_workers=cfg.data.num_workers)
     my_model.train()
 
-    print("Length of data reader train: {}".format(len(data_reader_trn)))
 
-    print("BEGIN TRAINING...")
+    print("=> Start training...")
     one_stage_train(my_model,
                     data_reader_trn,
                     my_optim, my_loss, data_reader_eval=data_reader_val,
