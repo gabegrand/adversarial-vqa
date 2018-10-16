@@ -13,8 +13,6 @@ from dataset_utils.vqa_concate_dataset import vqa_concate_dataset
 
 def prepare_data_set(imdb_file_label, image_dir_label, **data_config):
 
-    print(imdb_file_label, image_dir_label)
-
     # get the potential shared data_config info
     data_root_dir = data_config['data_root_dir']
     vocab_question_file = os.path.join(
