@@ -1,3 +1,4 @@
+run: train
 data:
   data_root_dir: data/
   dataset: vqa_v2
