@@ -66,9 +66,10 @@ class vqa_multi_modal_model(nn.Module):
                  image_embedding_models_list,
                  question_embedding_models,
                  multi_modal_combine,
-                 classifier, 
+                 classifier,
                  adversarial_classifier,
-                 image_feature_encode_list, 
+                 adversarial_lambda,
+                 image_feature_encode_list,
                  inter_model=None):
         super(vqa_multi_modal_model, self).__init__()
         self.image_embedding_models_list = image_embedding_models_list
@@ -78,6 +79,7 @@ class vqa_multi_modal_model(nn.Module):
         self.image_feature_encode_list = image_feature_encode_list
         self.inter_model = inter_model
         self.adversarial_classifier = adversarial_classifier
+        self.adversarial_lambda = adversarial_lambda
 
     def forward(self,
                 image_feat_variables,
@@ -117,7 +119,8 @@ class vqa_multi_modal_model(nn.Module):
             image_embedding_total, question_embedding_total)
         logit_res = self.classifier(joint_embedding)
 
-        question_embedding_reversed = grad_reverse(question_embedding_total)
+        question_embedding_reversed = grad_reverse(question_embedding_total,
+                                                   self.adversarial_lambda)
         logit_adv = self.adversarial_classifier(question_embedding_reversed)
 
         return logit_res, logit_adv

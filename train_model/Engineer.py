@@ -74,43 +74,49 @@ def check_params_and_grads(myModel):
     return params_ok
 
 
-def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, 
-                  adv_train_loss, adv_train_acc, adv_train_avg_acc, 
-                  report_timer, writer, data_reader_eval, myModel, loss_criterion):
+def save_a_report(i_iter, train_loss, train_acc, train_avg_acc,
+                  adv_train_loss, adv_train_acc, adv_train_avg_acc,
+                  report_timer, log_dir, data_reader_eval, myModel, loss_criterion):
     val_batch = next(iter(data_reader_eval))
     val_score, adv_val_score, val_loss, adv_val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
     adv_val_acc = adv_val_score / n_val_sample
 
-    print("iter:", i_iter, 
-          "time(s): % s \n" % report_timer.end(),
-          "Main model: train_loss: %.4f" % train_loss, 
+    print("iter:", i_iter, "time(s): % s" % report_timer.end(),
+          "\nMain model: " + \
+          "train_loss: %.4f" % train_loss,
           "train_score: %.4f" % train_acc,
-          "avg_train_score: %.4f" % train_avg_acc, 
+          "avg_train_score: %.4f" % train_avg_acc,
           "val_score: %.4f" % val_acc,
-          "val_loss: %.4f \n" % val_loss.item(),
-          "Advs model: train_loss: %.4f" % adv_train_loss, 
+          "val_loss: %.4f" % val_loss.item(),
+          "\nAdvs model: " + \
+          "train_loss: %.4f" % adv_train_loss,
           "train_score: %.4f" % adv_train_acc,
-          "avg_train_score: %.4f" % adv_train_avg_acc, 
+          "avg_train_score: %.4f" % adv_train_avg_acc,
           "val_score: %.4f" % adv_val_acc,
           "val_loss: %.4f" % adv_val_loss.item(),
           )
     sys.stdout.flush()
     report_timer.start()
 
-    writer.add_scalar('loss/train', train_loss, i_iter)
-    writer.add_scalar('score/train', train_acc, i_iter)
-    writer.add_scalar('score_avg/train', train_avg_acc, i_iter)
-    writer.add_scalar('score/val', val_score, i_iter)
-    writer.add_scalar('loss/val', val_loss.item(), i_iter)
+    with SummaryWriter(os.path.join(log_dir, 'main')) as writer:
 
-    writer.add_scalar('adv/loss/train', adv_train_loss, i_iter)
-    writer.add_scalar('adv/score/train', adv_train_acc, i_iter)
-    writer.add_scalar('adv/score_avg/train', adv_train_avg_acc, i_iter)
-    writer.add_scalar('adv/score/val', adv_val_score, i_iter)
-    writer.add_scalar('adv/loss/val', adv_val_loss.item(), i_iter)
-    for name, param in myModel.named_parameters():
-        writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
+        writer.add_scalar('loss/train', train_loss, i_iter)
+        writer.add_scalar('score/train', train_acc, i_iter)
+        writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
+        writer.add_scalar('score/val', val_acc, i_iter)
+        writer.add_scalar('loss/val', val_loss.item(), i_iter)
+
+        for name, param in myModel.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
+
+    with SummaryWriter(os.path.join(log_dir, 'adversary')) as writer:
+
+        writer.add_scalar('loss/train', adv_train_loss, i_iter)
+        writer.add_scalar('score/train', adv_train_acc, i_iter)
+        writer.add_scalar('score/avg_train', adv_train_avg_acc, i_iter)
+        writer.add_scalar('score/val', adv_val_acc, i_iter)
+        writer.add_scalar('loss/val', adv_val_loss.item(), i_iter)
 
 
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_criterion, best_val_accuracy,
@@ -155,8 +161,7 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
                     scheduler=None):
-    # report_interval = cfg.training_parameters.report_interval
-    report_interval = 10
+    report_interval = cfg.training_parameters.report_interval
     snapshot_interval = cfg.training_parameters.snapshot_interval
     max_iter = cfg.training_parameters.max_iter
 
@@ -201,11 +206,11 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
             clip_gradients(myModel, i_iter, writer=None)
             adv_optimizer.step()
 
-            check_params_and_grads(myModel)
+            assert(check_params_and_grads(myModel))
 
             if i_iter % report_interval == 0:
-                save_a_report(i_iter, total_loss.item(), accuracy, avg_accuracy, adv_loss, adv_accuracy, avg_adv_accuracy, 
-                              report_timer, writer, data_reader_eval,myModel, loss_criterion)
+                save_a_report(i_iter, total_loss.item(), accuracy, avg_accuracy, adv_loss, adv_accuracy, avg_adv_accuracy,
+                              report_timer, log_dir, data_reader_eval,myModel, loss_criterion)
 
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, myModel,
@@ -308,4 +313,3 @@ def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=Non
     # g = make_dot(logit_res, params=dict(my_model.named_parameters()))
 
     return logit_res, logit_adv
-

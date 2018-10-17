@@ -99,9 +99,10 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         image_emdedding_models_list,
         question_embeding_models,
         multi_modal_combine,
-        classifier, 
+        classifier,
         adversarial_classifier,
-        image_feature_encode_list, 
+        model_config['adversarial_lambda'],
+        image_feature_encode_list,
         inter_model)
 
     if use_cuda:

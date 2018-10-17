@@ -31,8 +31,12 @@ def build_model(config, dataset):
     num_choices = dataset.answer_dict.num_vocab
 
     num_image_feat = len(config['data']['image_feat_train'][0].split(','))
-    my_model = prepare_model(num_vocab_txt, num_choices, **config['model'],
-                            num_image_feat=num_image_feat)
+    adversarial_lambda = config['training_parameters']['adversarial_lambda']
+    my_model = prepare_model(num_vocab_txt,
+                             num_choices,
+                             **config['model'],
+                             num_image_feat=num_image_feat,
+                             adversarial_lambda=adversarial_lambda)
     return my_model
 
 
