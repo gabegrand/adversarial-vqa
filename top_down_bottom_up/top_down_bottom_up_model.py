@@ -7,7 +7,7 @@
 
 import torch
 import torch.nn as nn
-from torch.autograd import Function
+from torch.autograd import Variable, Function
 from top_down_bottom_up.nonlinear_layer import nonlinear_layer
 from global_variables.global_variables import use_cuda
 
@@ -78,7 +78,7 @@ class vqa_multi_modal_model(nn.Module):
         self.classifier = classifier
         self.image_feature_encode_list = image_feature_encode_list
         self.inter_model = inter_model
-        self.adversarial_classifier = adversarial_classifier
+        # self.adversarial_classifier = adversarial_classifier
         self.adversarial_lambda = adversarial_lambda
 
     def forward(self,
@@ -119,9 +119,14 @@ class vqa_multi_modal_model(nn.Module):
             image_embedding_total, question_embedding_total)
         logit_res = self.classifier(joint_embedding)
 
-        question_embedding_reversed = grad_reverse(question_embedding_total,
-                                                   self.adversarial_lambda)
-        logit_adv = self.adversarial_classifier(question_embedding_reversed)
+        # if self.adversarial_lambda > 0:
+        #     adv_input = grad_reverse(question_embedding_total,
+        #                              self.adversarial_lambda)
+        # else:
+        #     adv_input = question_embedding_total.detach()
+        # logit_adv = self.adversarial_classifier(adv_input)
+
+        logit_adv = Variable(torch.rand_like(logit_res)).cuda()
 
         return logit_res, logit_adv
 

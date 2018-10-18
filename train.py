@@ -51,6 +51,10 @@ def parse_args():
     parser.add_argument("--force_restart", action='store_true',
                         help="flag to force clean previous"
                         "result and restart training")
+    parser.add_argument("-s", "--suffix",
+                        type=str,
+                        help="suffix to append to run name",
+                        default=None)
 
     arguments = parser.parse_args()
     return arguments
@@ -60,7 +64,7 @@ def process_config(config_file, config_string):
     finalize_config(cfg, config_file, config_string)
 
 
-def get_output_folder_name(config_basename, cfg_overwrite_obj, seed):
+def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
     m_name, _ = os.path.splitext(config_basename)
 
     # remove configs which won't change model performance
@@ -83,6 +87,9 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed):
                 del cfg_overwrite_obj['training_parameters']['report_interval']
     else:
         f_name = '%d' % seed
+
+    if suffix:
+        f_name += '_' + suffix
 
     return m_name, f_name
 
@@ -150,7 +157,9 @@ if __name__ == '__main__':
         if args.config_overwrite is not None else None
 
     middle_name, final_name = get_output_folder_name(basename,
-                                                     cmd_cfg_obj, seed)
+                                                     cmd_cfg_obj,
+                                                     seed,
+                                                     args.suffix)
 
     out_dir = args.out_dir if args.out_dir is not None else os.getcwd()
 
@@ -197,11 +206,12 @@ if __name__ == '__main__':
         params, **cfg.optimizer.par)
 
     #TODO: Pass in 'lr' here?
-    adv_params = [{'params': model.question_embedding_models.parameters()},
-                  {'params': model.adversarial_classifier.parameters()}]
-
-    adv_optim = getattr(optim, cfg.optimizer.method)(
-        adv_params, **cfg.adv_optimizer.par)
+    # adv_params = [{'params': model.question_embedding_models.parameters()},
+    #               {'params': model.adversarial_classifier.parameters()}]
+    #
+    # adv_optim = getattr(optim, cfg.optimizer.method)(
+    #     adv_params, **cfg.adv_optimizer.par)
+    adv_optim = None
 
     i_epoch = 0
     i_iter = 0

@@ -76,7 +76,7 @@ def check_params_and_grads(myModel):
 
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc,
                   adv_train_loss, adv_train_acc, adv_train_avg_acc,
-                  report_timer, log_dir, data_reader_eval, myModel, loss_criterion):
+                  report_timer, main_writer, adv_writer, data_reader_eval, myModel, loss_criterion):
     val_batch = next(iter(data_reader_eval))
     val_score, adv_val_score, val_loss, adv_val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
@@ -99,24 +99,20 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc,
     sys.stdout.flush()
     report_timer.start()
 
-    with SummaryWriter(os.path.join(log_dir, 'main')) as writer:
+    main_writer.add_scalar('score/train', train_acc, i_iter)
+    main_writer.add_scalar('loss/train', train_loss, i_iter)
+    main_writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
+    main_writer.add_scalar('score/val', val_acc, i_iter)
+    main_writer.add_scalar('loss/val', val_loss.item(), i_iter)
 
-        writer.add_scalar('loss/train', train_loss, i_iter)
-        writer.add_scalar('score/train', train_acc, i_iter)
-        writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
-        writer.add_scalar('score/val', val_acc, i_iter)
-        writer.add_scalar('loss/val', val_loss.item(), i_iter)
+    for name, param in myModel.named_parameters():
+        main_writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
-        for name, param in myModel.named_parameters():
-            writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
-
-    with SummaryWriter(os.path.join(log_dir, 'adversary')) as writer:
-
-        writer.add_scalar('loss/train', adv_train_loss, i_iter)
-        writer.add_scalar('score/train', adv_train_acc, i_iter)
-        writer.add_scalar('score/avg_train', adv_train_avg_acc, i_iter)
-        writer.add_scalar('score/val', adv_val_acc, i_iter)
-        writer.add_scalar('loss/val', adv_val_loss.item(), i_iter)
+    adv_writer.add_scalar('loss/train', adv_train_loss, i_iter)
+    adv_writer.add_scalar('score/train', adv_train_acc, i_iter)
+    adv_writer.add_scalar('score/avg_train', adv_train_avg_acc, i_iter)
+    adv_writer.add_scalar('score/val', adv_val_acc, i_iter)
+    adv_writer.add_scalar('loss/val', adv_val_loss.item(), i_iter)
 
 
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_criterion, best_val_accuracy,
@@ -169,11 +165,13 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
     avg_adv_accuracy = 0
     accuracy_decay = 0.99
     best_epoch = 0
-    writer = SummaryWriter(log_dir)
     best_iter = i_iter
     iepoch = start_epoch
     snapshot_timer = Timer('m')
     report_timer = Timer('s')
+
+    main_writer = SummaryWriter(os.path.join(log_dir, 'main'))
+    adv_writer = SummaryWriter(os.path.join(log_dir, 'adversary'))
 
     print("MAX ITER: {}".format(max_iter))
 
@@ -187,7 +185,7 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
             scheduler.step(i_iter)
 
             my_optimizer.zero_grad()
-            adv_optimizer.zero_grad()
+            # adv_optimizer.zero_grad()
             add_graph = False
             scores, adv_scores, total_loss, adv_loss, n_sample = compute_a_batch(batch, myModel, eval_mode=False,
                                                                                  loss_criterion=loss_criterion,
@@ -197,20 +195,30 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer, adv_optimizer,
             total_loss.backward(retain_graph=True)
             accuracy = scores / n_sample
             avg_accuracy += (1 - accuracy_decay) * (accuracy - avg_accuracy)
-            clip_gradients(myModel, i_iter, writer)
+
+            modules_main = nn.ModuleList([myModel.image_embedding_models_list,
+                                          myModel.question_embedding_models,
+                                          myModel.multi_modal_combine,
+                                          myModel.classifier,
+                                          myModel.image_feature_encode_list])
+            clip_gradients(modules_main, i_iter, main_writer)
             my_optimizer.step()
 
-            adv_loss.backward()
+            # adv_loss.backward()
             adv_accuracy = adv_scores / n_sample
             avg_adv_accuracy += (1 - accuracy_decay) * (adv_accuracy - avg_adv_accuracy)
-            clip_gradients(myModel, i_iter, writer=None)
-            adv_optimizer.step()
-
-            assert(check_params_and_grads(myModel))
+            #
+            # modules_adv = nn.ModuleList([myModel.question_embedding_models,
+            #                              myModel.adversarial_classifier])
+            #
+            # clip_gradients(modules_adv, i_iter, adv_writer)
+            # adv_optimizer.step()
+            #
+            # assert(check_params_and_grads(myModel))
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, total_loss.item(), accuracy, avg_accuracy, adv_loss, adv_accuracy, avg_adv_accuracy,
-                              report_timer, log_dir, data_reader_eval,myModel, loss_criterion)
+                              report_timer, main_writer, adv_writer, data_reader_eval, myModel, loss_criterion)
 
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, myModel,
