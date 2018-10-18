@@ -7,6 +7,7 @@
 
 import torch
 import torch.nn as nn
+from torch.autograd import Function
 from top_down_bottom_up.nonlinear_layer import nonlinear_layer
 from global_variables.global_variables import use_cuda
 
@@ -113,3 +114,42 @@ class vqa_multi_modal_model(nn.Module):
         logit_res = self.classifier(joint_embedding)
 
         return logit_res
+
+
+class adversarial_vqa_model(nn.Module):
+    def __init__(self, question_embedding_models, classifier):
+        super(adversarial_vqa_model, self).__init__()
+        self.question_embedding_models = question_embedding_models
+        self.classifier = classifier
+
+    def forward(self, input_question_variable):
+        question_embeddings = []
+        for q_model in self.question_embedding_models:
+            q_embedding = q_model(input_question_variable)
+            question_embeddings.append(q_embedding)
+        question_embedding_total = torch.cat(question_embeddings, dim=1)
+
+        # TODO: Add GRL
+        classifier_input = grad_reverse(question_embedding_total,
+                                        0)
+        logit_res = self.classifier(classifier_input)
+
+        return logit_res
+
+
+"""
+Gradient reversal layer from https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/6
+"""
+class GradReverse(Function):
+
+    def __init__(self, lambd=1.0):
+        self.lambd = lambd
+
+    def forward(self, x):
+        return x.view_as(x)
+
+    def backward(self, grad_output):
+        return (grad_output * -self.lambd)
+
+def grad_reverse(x, lambd=1.0):
+    return GradReverse(lambd)(x)

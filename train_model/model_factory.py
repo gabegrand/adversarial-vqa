@@ -7,7 +7,8 @@
 
 
 from global_variables.global_variables import *
-from top_down_bottom_up.top_down_bottom_up_model import vqa_multi_modal_model
+from top_down_bottom_up.top_down_bottom_up_model import vqa_multi_modal_model, \
+                                                        adversarial_vqa_model
 from top_down_bottom_up.image_attention import build_image_attention_module
 from top_down_bottom_up.classifier import build_classifier
 from top_down_bottom_up.question_embeding import build_question_encoding_module
@@ -89,16 +90,25 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         in_dim=joint_embedding_dim,
         out_dim=num_choices)
 
-    my_model = vqa_multi_modal_model(
+    main_model = vqa_multi_modal_model(
         image_emdedding_models_list,
         question_embeding_models,
         multi_modal_combine,
         classifier, image_feature_encode_list, inter_model)
 
+    adv_classifier = build_classifier(
+        method="linear_classifier",
+        par={'par': None},
+        in_dim=final_question_embeding_dim,
+        out_dim=num_choices)
+    adv_model = adversarial_vqa_model(question_embeding_models, adv_classifier)
+
     if use_cuda:
-        my_model = my_model.cuda()
+        main_model = main_model.cuda()
+        adv_model = adv_model.cuda()
 
     if torch.cuda.device_count() > 1:
-        my_model = nn.DataParallel(my_model)
+        main_model = nn.DataParallel(main_model)
+        adv_model = nn.DataParallel(adv_model)
 
-    return my_model
+    return main_model, adv_model

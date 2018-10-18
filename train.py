@@ -177,11 +177,11 @@ if __name__ == '__main__':
     train_dataSet = prepare_train_data_set(**cfg['data'], **cfg['model'])
     print("=> Loaded trainset: {} examples".format(len(train_dataSet)))
 
-    my_model = build_model(cfg, train_dataSet)
+    main_model, adv_model = build_model(cfg, train_dataSet)
 
-    model = my_model
-    if hasattr(my_model, 'module'):
-        model = my_model.module
+    model = main_model
+    if hasattr(main_model, 'module'):
+        model = main_model.module
 
     params = [{'params': model.image_embedding_models_list.parameters()},
               {'params': model.question_embedding_models.parameters()},
@@ -190,8 +190,11 @@ if __name__ == '__main__':
               {'params': model.image_feature_encode_list.parameters(),
                'lr': cfg.optimizer.par.lr * 0.1}]
 
-    my_optim = getattr(optim, cfg.optimizer.method)(
+    main_optim = getattr(optim, cfg.optimizer.method)(
         params, **cfg.optimizer.par)
+
+    # TODO: adv_optim should get its own hyperparams in the config
+    adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters())
 
     i_epoch = 0
     i_iter = 0
@@ -206,12 +209,12 @@ if __name__ == '__main__':
             i_iter = info['iter']
             sd = info['state_dict']
             op_sd = info['optimizer']
-            my_model.load_state_dict(sd)
-            my_optim.load_state_dict(op_sd)
+            main_model.load_state_dict(sd)
+            main_optim.load_state_dict(op_sd)
             if 'best_val_accuracy' in info:
                 best_accuracy = info['best_val_accuracy']
 
-    scheduler = get_optim_scheduler(my_optim)
+    scheduler = get_optim_scheduler(main_optim)
 
     my_loss = get_loss_criterion(cfg.loss)
 
@@ -226,13 +229,15 @@ if __name__ == '__main__':
                                  shuffle=True,
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
-    my_model.train()
-
+    main_model.train()
+    adv_model.train()
 
     print("=> Start training...")
-    one_stage_train(my_model,
+    one_stage_train(main_model,
+                    adv_model,
                     data_reader_trn,
-                    my_optim, my_loss, data_reader_eval=data_reader_val,
+                    main_optim, adv_optim,
+                    my_loss, data_reader_eval=data_reader_val,
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
                     scheduler=scheduler,best_val_accuracy=best_accuracy)

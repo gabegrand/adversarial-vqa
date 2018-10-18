@@ -19,7 +19,7 @@ def build_classifier(method, par, in_dim, out_dim):
     elif method == "logit_classifier":
         return logit_classifier(in_dim, out_dim, **classifier_par)
     elif method == "linear_classifier":
-        return LinearClassifier(in_dim, out_dim, **classifier_par)
+        return LinearClassifier(in_dim, out_dim)
     else:
         raise NotImplementedError("unknown classifier %s" % method)
 

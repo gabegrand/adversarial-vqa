@@ -52,13 +52,13 @@ def clip_gradients(myModel, i_iter, writer):
 
 
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
-                  myModel, loss_criterion):
+                  my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
-    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
     print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
-          "Main model: " + \
+          "Model: {}".format(model_type),
           "train_loss: %.4f" % train_loss,
           "train_score: %.4f" % train_acc,
           "avg_train_score: %.4f" % train_avg_acc,
@@ -68,27 +68,29 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
     sys.stdout.flush()
     report_timer.start()
 
-    writer.add_scalar('main/loss/train', train_loss, i_iter)
-    writer.add_scalar('main/score/train', train_acc, i_iter)
-    writer.add_scalar('main/score_avg/train', train_avg_acc, i_iter)
-    writer.add_scalar('main/score/val', val_acc, i_iter)
-    writer.add_scalar('main/loss/val', val_loss.item(), i_iter)
-    for name, param in myModel.named_parameters():
+    writer.add_scalar('loss/train', train_loss, i_iter)
+    writer.add_scalar('score/train', train_acc, i_iter)
+    writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
+    writer.add_scalar('score/val', val_acc, i_iter)
+    writer.add_scalar('loss/val', val_loss.item(), i_iter)
+    for name, param in my_model.named_parameters():
         writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
 
-def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_criterion, best_val_accuracy,
-                    best_epoch, best_iter, snapshot_timer, data_reader_eval):
+def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
+                    main_optimizer, adv_optimizer,
+                    loss_criterion, best_val_accuracy, best_epoch, best_iter,
+                    snapshot_timer, data_reader_eval):
     model_snapshot_file = os.path.join(snapshot_dir, "model_%08d.pth" % i_iter)
     model_result_file = os.path.join(snapshot_dir, "result_on_val.txt")
     save_dic = {
         'epoch': iepoch,
         'iter': i_iter,
-        'state_dict': myModel.state_dict(),
-        'optimizer': my_optimizer.state_dict()}
+        'state_dict': main_model.state_dict(),
+        'optimizer': main_optimizer.state_dict()}
 
     if data_reader_eval is not None:
-        val_accuracy, avg_loss, val_sample_tot = one_stage_eval_model(data_reader_eval, myModel,
+        val_accuracy, avg_loss, val_sample_tot = one_stage_eval_model(data_reader_eval, main_model, get_run_fn('main'),
                                                                       loss_criterion=loss_criterion)
         print("i_epoch:", iepoch, "i_iter:", i_iter, "val_loss:%.4f" % avg_loss,
               "val_acc:%.4f" % val_accuracy, "runtime: %s" % snapshot_timer.end())
@@ -115,7 +117,7 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, myModel, my_optimizer, loss_cri
     return best_val_accuracy, best_epoch, best_iter
 
 
-def one_stage_train(myModel, data_reader_trn, my_optimizer,
+def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
                     scheduler=None):
@@ -123,10 +125,11 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
     snapshot_interval = cfg.training_parameters.snapshot_interval
     max_iter = cfg.training_parameters.max_iter
 
-    avg_accuracy = 0
+    main_avg_accuracy = adv_avg_accuracy = 0
     accuracy_decay = 0.99
     best_epoch = 0
-    writer = SummaryWriter(log_dir)
+    main_writer = SummaryWriter(os.path.join(log_dir, 'main'))
+    adv_writer = SummaryWriter(os.path.join(log_dir, 'adversary'))
     best_iter = i_iter
     iepoch = start_epoch
     snapshot_timer = Timer('m')
@@ -141,29 +144,47 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
             if i_iter > max_iter:
                 break
 
+            # TODO: Add scheduler for adv_optim
             scheduler.step(i_iter)
 
-            my_optimizer.zero_grad()
-            add_graph = False
-            scores, total_loss, n_sample = compute_a_batch(batch, myModel, eval_mode=False,
-                                                           loss_criterion=loss_criterion,
-                                                           add_graph=add_graph, log_dir=log_dir)
-            total_loss.backward()
-            accuracy = scores / n_sample
-            avg_accuracy += (1 - accuracy_decay) * (accuracy - avg_accuracy)
+            # Run main model
+            main_scores, main_loss, n_sample = compute_a_batch(batch,
+                                                               main_model,
+                                                               run_fn=one_stage_run_model,
+                                                               eval_mode=False,
+                                                               loss_criterion=loss_criterion)
+            main_optimizer.zero_grad()
+            main_loss.backward()
+            main_accuracy = main_scores / n_sample
+            main_avg_accuracy += (1 - accuracy_decay) * (main_accuracy - main_avg_accuracy)
+            clip_gradients(main_model, i_iter, main_writer)
+            main_optimizer.step()
 
-            clip_gradients(myModel, i_iter, writer)
-            my_optimizer.step()
+            # Run adv model
+            adv_scores, adv_loss, n_sample = compute_a_batch(batch,
+                                                             adv_model,
+                                                             run_fn=one_stage_run_adv,
+                                                             eval_mode=False,
+                                                             loss_criterion=loss_criterion)
+            adv_optimizer.zero_grad()
+            adv_loss.backward()
+            adv_accuracy = adv_scores / n_sample
+            adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
+            clip_gradients(adv_model, i_iter, adv_writer)
+            adv_optimizer.step()
 
             if i_iter % report_interval == 0:
-                save_a_report(i_iter, total_loss.data[0], accuracy, avg_accuracy, report_timer,
-                              writer, data_reader_eval,myModel, loss_criterion)
+                save_a_report(i_iter, main_loss.item(), main_accuracy, main_avg_accuracy, report_timer,
+                              main_writer, data_reader_eval, main_model, 'main', loss_criterion)
+                save_a_report(i_iter, adv_loss.item(), adv_accuracy, adv_avg_accuracy, report_timer,
+                              adv_writer, data_reader_eval, adv_model, 'adv', loss_criterion)
 
+            # TODO: Save adversary model
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
-                best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, myModel,
-                                                                         my_optimizer, loss_criterion, best_val_accuracy,
-                                                                          best_epoch, best_iter, snapshot_timer,
-                                                                          data_reader_eval)
+                best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, main_model, adv_model,
+                                                                           main_optimizer, adv_optimizer, loss_criterion, best_val_accuracy,
+                                                                           best_epoch, best_iter, snapshot_timer,
+                                                                           data_reader_eval)
 
     writer.export_scalars_to_json(os.path.join(log_dir, "all_scalars.json"))
     writer.close()
@@ -171,7 +192,7 @@ def one_stage_train(myModel, data_reader_trn, my_optimizer,
     sys.stdout.flush()
 
 
-def evaluate_a_batch(batch, myModel, loss_criterion):
+def evaluate_a_batch(batch, main_model, loss_criterion):
     answer_scores = batch['ans_scores']
     n_sample = answer_scores.size(0)
 
@@ -179,15 +200,15 @@ def evaluate_a_batch(batch, myModel, loss_criterion):
     if use_cuda:
         input_answers_variable = input_answers_variable.cuda()
 
-    logit_res = one_stage_run_model(batch, myModel)
+    logit_res = one_stage_run_model(batch, main_model)
     predicted_scores = torch.sum(compute_score_with_logits(logit_res,
                                  input_answers_variable.data))
     total_loss = loss_criterion(logit_res, input_answers_variable)
 
-    return predicted_scores / n_sample, total_loss.data[0]
+    return predicted_scores / n_sample, total_loss.item()
 
 
-def compute_a_batch(batch, my_model, eval_mode, loss_criterion=None, add_graph=False, log_dir=None):
+def compute_a_batch(batch, main_model, run_fn, eval_mode, loss_criterion=None):
 
     obs_res = batch['ans_scores']
     obs_res = Variable(obs_res.type(torch.FloatTensor))
@@ -195,32 +216,31 @@ def compute_a_batch(batch, my_model, eval_mode, loss_criterion=None, add_graph=F
         obs_res = obs_res.cuda()
 
     n_sample = obs_res.size(0)
-    logit_res = one_stage_run_model(batch, my_model, eval_mode, add_graph, log_dir)
-    predicted_scores = torch.sum(compute_score_with_logits(logit_res, obs_res.data))
+    logits = run_fn(batch, main_model, eval_mode)
+    scores = torch.sum(compute_score_with_logits(logits, obs_res.data))
+    loss = None if loss_criterion is None else loss_criterion(logits, obs_res)
 
-    total_loss = None if loss_criterion is None else loss_criterion(logit_res, obs_res)
-
-    return predicted_scores, total_loss, n_sample
+    return scores, loss, n_sample
 
 
-def one_stage_eval_model(data_reader_eval, myModel, loss_criterion=None):
+def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=None):
     score_tot = 0
     n_sample_tot = 0
     loss_tot = 0
     for idx, batch in enumerate(data_reader_eval):
-        score, loss, n_sample = compute_a_batch(batch, myModel, eval_mode=True, loss_criterion=loss_criterion)
+        score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
-            loss_tot += loss.data[0] * n_sample
+            loss_tot += loss.item() * n_sample
     return score_tot / n_sample_tot, loss_tot / n_sample_tot, n_sample_tot
 
 
-def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=None):
+def one_stage_run_model(batch, main_model, eval_mode):
     if eval_mode:
-        my_model.eval()
+        main_model.eval()
     else:
-        my_model.train()
+        main_model.train()
 
     input_text_seqs = batch['input_seq_batch']
     input_images = batch['image_feat_batch']
@@ -251,8 +271,33 @@ def one_stage_run_model(batch, my_model, eval_mode, add_graph=False, log_dir=Non
         image_feat_variables.append(tmp_image_variable)
         i += 1
 
-    logit_res = my_model(input_question_variable=input_txt_variable,
+    main_logits = main_model(input_question_variable=input_txt_variable,
                          image_dim_variable=image_dim_variable,
                          image_feat_variables=image_feat_variables)
 
-    return logit_res
+    return main_logits
+
+
+def one_stage_run_adv(batch, adv_model, eval_mode):
+    if eval_mode:
+        adv_model.eval()
+    else:
+        adv_model.train()
+
+    input_text_seqs = batch['input_seq_batch']
+    input_txt_variable = Variable(input_text_seqs.type(torch.LongTensor))
+    if use_cuda:
+        input_txt_variable = input_txt_variable.cuda()
+
+    adv_logits = adv_model(input_question_variable=input_txt_variable)
+
+    return adv_logits
+
+
+def get_run_fn(model_type):
+    if model_type == 'main':
+        return one_stage_run_model
+    elif model_type == 'adv':
+        return one_stage_run_adv
+    else:
+        raise ValueError(model_type)
