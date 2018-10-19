@@ -14,6 +14,7 @@ from torch.autograd import Variable
 from global_variables.global_variables import use_cuda
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 from config.config import cfg
 from tools.timer import Timer
 
@@ -51,6 +52,25 @@ def clip_gradients(myModel, i_iter, writer):
             raise NotImplementedError
 
 
+def check_params_and_grads(myModel):
+    params_ok = True
+    for name, param in myModel.named_parameters():
+        if torch.isnan(param).any():
+            params_ok = False
+            print("NaN detected in param: {}".format(name))
+
+        if param.grad is not None:
+            if torch.isnan(param.grad).any():
+                params_ok = False
+                print("NaN detected in grad: {}".format(name))
+            if param.grad.gt(1e6).any():
+                params_ok = False
+                print("Exploding grad: {}".format(name))
+        else:
+            print("No grad: {} ({})".format(name, param.grad))
+    return params_ok
+
+
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
                   my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
@@ -80,7 +100,7 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
                     main_optimizer, adv_optimizer,
                     loss_criterion, best_val_accuracy, best_epoch, best_iter,
-                    snapshot_timer, data_reader_eval):
+                    snapshot_timer, data_reader_eval, main_train_acc):
     model_snapshot_file = os.path.join(snapshot_dir, "model_%08d.pth" % i_iter)
     model_result_file = os.path.join(snapshot_dir, "result_on_val.txt")
     save_dic = {
@@ -98,7 +118,7 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
         sys.stdout.flush()
 
         with open(model_result_file, 'a') as fid:
-            fid.write('%d %d %.5f\n' % (iepoch, i_iter, val_accuracy))
+            fid.write('%d %d %.5f\n' % (iepoch, i_iter, val_accuracy, main_train_acc))
 
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
@@ -139,6 +159,9 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
     while i_iter < max_iter:
         iepoch += 1
+
+        main_score_epoch = 0
+        n_sample_tot = 0
         for i, batch in enumerate(data_reader_trn):
             i_iter += 1
             if i_iter > max_iter:
@@ -157,7 +180,10 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             main_loss.backward()
             main_accuracy = main_scores / n_sample
             main_avg_accuracy += (1 - accuracy_decay) * (main_accuracy - main_avg_accuracy)
+            main_score_epoch += main_scores
+            n_sample_tot += n_sample
             clip_gradients(main_model, i_iter, main_writer)
+            check_params_and_grads(main_model)
             main_optimizer.step()
 
             # Run adv model
@@ -171,6 +197,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             adv_accuracy = adv_scores / n_sample
             adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
             clip_gradients(adv_model, i_iter, adv_writer)
+            check_params_and_grads(adv_model)
             adv_optimizer.step()
 
             if i_iter % report_interval == 0:
@@ -181,31 +208,33 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
             # TODO: Save adversary model
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
+                main_train_acc = main_score_epoch / n_sample_tot
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, main_model, adv_model,
                                                                            main_optimizer, adv_optimizer, loss_criterion, best_val_accuracy,
                                                                            best_epoch, best_iter, snapshot_timer,
-                                                                           data_reader_eval)
+                                                                           data_reader_eval, main_train_acc)
 
-    writer.export_scalars_to_json(os.path.join(log_dir, "all_scalars.json"))
-    writer.close()
+    main_writer.export_scalars_to_json(os.path.join(log_dir, "all_scalars.json"))
+    main_writer.close()
+    adv_writer.close()
     print("best_acc:%.6f after epoch: %d/%d at iter %d" % (best_val_accuracy, best_epoch, iepoch, best_iter))
     sys.stdout.flush()
 
 
-def evaluate_a_batch(batch, main_model, loss_criterion):
-    answer_scores = batch['ans_scores']
-    n_sample = answer_scores.size(0)
-
-    input_answers_variable = Variable(answer_scores.type(torch.FloatTensor))
-    if use_cuda:
-        input_answers_variable = input_answers_variable.cuda()
-
-    logit_res = one_stage_run_model(batch, main_model)
-    predicted_scores = torch.sum(compute_score_with_logits(logit_res,
-                                 input_answers_variable.data))
-    total_loss = loss_criterion(logit_res, input_answers_variable)
-
-    return predicted_scores / n_sample, total_loss.item()
+# def evaluate_a_batch(batch, main_model, loss_criterion):
+#     answer_scores = batch['ans_scores']
+#     n_sample = answer_scores.size(0)
+#
+#     input_answers_variable = Variable(answer_scores.type(torch.FloatTensor))
+#     if use_cuda:
+#         input_answers_variable = input_answers_variable.cuda()
+#
+#     logit_res = one_stage_run_model(batch, main_model)
+#     predicted_scores = torch.sum(compute_score_with_logits(logit_res,
+#                                  input_answers_variable.data))
+#     total_loss = loss_criterion(logit_res, input_answers_variable)
+#
+#     return predicted_scores / n_sample, total_loss.item()
 
 
 def compute_a_batch(batch, main_model, run_fn, eval_mode, loss_criterion=None):
@@ -227,7 +256,7 @@ def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=No
     score_tot = 0
     n_sample_tot = 0
     loss_tot = 0
-    for idx, batch in enumerate(data_reader_eval):
+    for batch in tqdm(data_reader_eval):
         score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample

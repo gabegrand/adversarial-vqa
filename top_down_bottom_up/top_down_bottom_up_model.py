@@ -129,9 +129,8 @@ class adversarial_vqa_model(nn.Module):
             question_embeddings.append(q_embedding)
         question_embedding_total = torch.cat(question_embeddings, dim=1)
 
-        # TODO: Add GRL
         classifier_input = grad_reverse(question_embedding_total,
-                                        0)
+                                        0.00)
         logit_res = self.classifier(classifier_input)
 
         return logit_res

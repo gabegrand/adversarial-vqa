@@ -12,6 +12,7 @@ import random
 import os
 import demjson
 import shutil
+import sys
 import yaml
 from torch import optim
 from torch.utils.data import DataLoader
@@ -22,7 +23,8 @@ from train_model.dataset_utils import prepare_train_data_set, \
     prepare_eval_data_set, prepare_test_data_set
 from train_model.helper import build_model, run_model, print_result
 from train_model.Loss import get_loss_criterion
-from train_model.Engineer import one_stage_train
+from train_model.Engineer import one_stage_train, one_stage_eval_model, \
+    one_stage_run_model
 import glob
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -131,7 +133,7 @@ def print_eval(prepare_data_fun, out_label):
                  pkl_res_file=pkl_res_file)
 
 
-if __name__ == '__main__':
+def main(argv):
     prg_timer = Timer()
 
     args = parse_args()
@@ -218,14 +220,14 @@ if __name__ == '__main__':
 
     my_loss = get_loss_criterion(cfg.loss)
 
-    data_set_val = prepare_eval_data_set(**cfg['data'], **cfg['model'])
-    print("=> Loaded valset: {} examples".format(len(data_set_val)))
+    dataset_val = prepare_eval_data_set(**cfg['data'], **cfg['model'])
+    print("=> Loaded valset: {} examples".format(len(dataset_val)))
 
     data_reader_trn = DataLoader(dataset=train_dataSet,
                                  batch_size=cfg.data.batch_size,
                                  shuffle=True,
                                  num_workers=cfg.data.num_workers)
-    data_reader_val = DataLoader(data_set_val,
+    data_reader_val = DataLoader(dataset_val,
                                  shuffle=True,
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
@@ -241,12 +243,43 @@ if __name__ == '__main__':
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
                     scheduler=scheduler,best_val_accuracy=best_accuracy)
+    print("=> Training complete.")
 
-    print("BEGIN PREDICTING ON TEST/VAL set...")
+    model_file = os.path.join(snapshot_dir, "best_model.pth")
+    if os.path.isfile(model_file):
+        print("=> Testing best model...")
+        dataset_test = prepare_test_data_set(**cfg['data'], **cfg['model'])
+        data_reader_test = DataLoader(dataset_test,
+                                      shuffle=True,
+                                      batch_size=cfg.data.batch_size,
+                                      num_workers=cfg.data.num_workers)
+        print("=> Loaded testset: {} examples".format(len(dataset_test)))
 
-    if 'predict' in cfg.run:
-        print_eval(prepare_test_data_set, "test")
-    if cfg.run == 'train+val':
-        print_eval(prepare_eval_data_set, "val")
+        main_model, _ = build_model(cfg, dataset_test)
+        main_model.load_state_dict(torch.load(model_file)['state_dict'])
+        main_model.eval()
+        print("=> Loaded model from file {}".format(model_file))
+
+        print("=> Start testing...")
+        acc_test, loss_test, _ = one_stage_eval_model(data_reader_test,
+                                                      main_model,
+                                                      one_stage_run_model,
+                                                      my_loss)
+        print("Final results:\nacc: {:.4f}\nloss: {:.4f}".format(acc_test,
+                                                                 loss_test))
+    else:
+        print("File {} not found. Skipping testing.".format(model_file))
+        acc_test = loss_test = 0
+
+    # print("BEGIN PREDICTING ON TEST/VAL set...")
+    # if 'predict' in cfg.run:
+    #     print_eval(prepare_test_data_set, "test")
+    # if cfg.run == 'train+val':
+    #     print_eval(prepare_eval_data_set, "val")
 
     print("total runtime(h): %s" % prg_timer.end())
+
+    return(acc_test, loss_test)
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
