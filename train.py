@@ -53,6 +53,10 @@ def parse_args():
     parser.add_argument("--force_restart", action='store_true',
                         help="flag to force clean previous"
                         "result and restart training")
+    parser.add_argument('-s', '--suffix',
+                        type=str,
+                        help="label to append to run name",
+                        default=None)
 
     arguments = parser.parse_args()
     return arguments
@@ -62,7 +66,7 @@ def process_config(config_file, config_string):
     finalize_config(cfg, config_file, config_string)
 
 
-def get_output_folder_name(config_basename, cfg_overwrite_obj, seed):
+def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
     m_name, _ = os.path.splitext(config_basename)
 
     # remove configs which won't change model performance
@@ -85,6 +89,9 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed):
                 del cfg_overwrite_obj['training_parameters']['report_interval']
     else:
         f_name = '%d' % seed
+
+    if suffix:
+        f_name += suffix
 
     return m_name, f_name
 
@@ -152,7 +159,8 @@ def main(argv):
         if args.config_overwrite is not None else None
 
     middle_name, final_name = get_output_folder_name(basename,
-                                                     cmd_cfg_obj, seed)
+                                                     cmd_cfg_obj,
+                                                     seed, args.suffix)
 
     out_dir = args.out_dir if args.out_dir is not None else os.getcwd()
 
@@ -206,13 +214,14 @@ def main(argv):
         files = glob.glob(md_pths)
         if len(files) > 0:
             latest_file = max(files, key=os.path.getctime)
+            print("=> Loading save from {}".format(latest_file))
             info = torch.load(latest_file)
             i_epoch = info['epoch']
             i_iter = info['iter']
-            sd = info['state_dict']
-            op_sd = info['optimizer']
-            main_model.load_state_dict(sd)
-            main_optim.load_state_dict(op_sd)
+            main_model.load_state_dict(info['state_dict'])
+            main_optim.load_state_dict(info['optimizer'])
+            adv_model.load_state_dict(info['adv_state_dict'])
+            adv_optim.load_state_dict(info['adv_optimizer'])
             if 'best_val_accuracy' in info:
                 best_accuracy = info['best_val_accuracy']
 

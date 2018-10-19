@@ -117,10 +117,12 @@ class vqa_multi_modal_model(nn.Module):
 
 
 class adversarial_vqa_model(nn.Module):
-    def __init__(self, question_embedding_models, classifier):
+    def __init__(self, question_embedding_models, classifier,
+            adversarial_lambda):
         super(adversarial_vqa_model, self).__init__()
         self.question_embedding_models = question_embedding_models
         self.classifier = classifier
+        self.adversarial_lambda = adversarial_lambda
 
     def forward(self, input_question_variable):
         question_embeddings = []
@@ -130,7 +132,7 @@ class adversarial_vqa_model(nn.Module):
         question_embedding_total = torch.cat(question_embeddings, dim=1)
 
         classifier_input = grad_reverse(question_embedding_total,
-                                        0.00)
+                                        self.adversarial_lambda)
         logit_res = self.classifier(classifier_input)
 
         return logit_res

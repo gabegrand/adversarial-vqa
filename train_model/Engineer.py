@@ -107,7 +107,9 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
         'epoch': iepoch,
         'iter': i_iter,
         'state_dict': main_model.state_dict(),
-        'optimizer': main_optimizer.state_dict()}
+        'adv_state_dict': adv_model.state_dict(),
+        'optimizer': main_optimizer.state_dict(),
+        'adv_optimizer': adv_optimizer.state_dict()}
 
     if data_reader_eval is not None:
         val_accuracy, avg_loss, val_sample_tot = one_stage_eval_model(data_reader_eval, main_model, get_run_fn('main'),
@@ -118,7 +120,7 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
         sys.stdout.flush()
 
         with open(model_result_file, 'a') as fid:
-            fid.write('%d %d %.5f\n' % (iepoch, i_iter, val_accuracy, main_train_acc))
+            fid.write('%d %d %.5f %.5f\n' % (iepoch, i_iter, val_accuracy, main_train_acc))
 
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
@@ -143,6 +145,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                     scheduler=None):
     report_interval = cfg.training_parameters.report_interval
     snapshot_interval = cfg.training_parameters.snapshot_interval
+
     max_iter = cfg.training_parameters.max_iter
 
     main_avg_accuracy = adv_avg_accuracy = 0
