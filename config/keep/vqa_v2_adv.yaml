@@ -27,3 +27,7 @@ model:
       embedding_init_file: vqa2.0_glove.6B.300d.txt.npy
 training_parameters:
   adversarial_lambda: 0.1
+adv_optimizer:
+  method: Adamax
+  par:
+    lr: 0.001

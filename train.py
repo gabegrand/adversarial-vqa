@@ -203,8 +203,8 @@ def main(argv):
     main_optim = getattr(optim, cfg.optimizer.method)(
         params, **cfg.optimizer.par)
 
-    # TODO: adv_optim should get its own hyperparams in the config
-    adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters())
+    adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
+        **cfg.adv_optimizer.par)
 
     i_epoch = 0
     i_iter = 0
@@ -226,6 +226,7 @@ def main(argv):
                 best_accuracy = info['best_val_accuracy']
 
     scheduler = get_optim_scheduler(main_optim)
+    adv_scheduler = get_optim_scheduler(adv_optim)
 
     my_loss = get_loss_criterion(cfg.loss)
 
@@ -251,7 +252,8 @@ def main(argv):
                     my_loss, data_reader_eval=data_reader_val,
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
-                    scheduler=scheduler,best_val_accuracy=best_accuracy)
+                    scheduler=scheduler, adv_scheduler=adv_scheduler,
+                    best_val_accuracy=best_accuracy)
     print("=> Training complete.")
 
     model_file = os.path.join(snapshot_dir, "best_model.pth")

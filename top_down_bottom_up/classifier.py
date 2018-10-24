@@ -12,7 +12,7 @@ from torch.nn.utils.weight_norm import weight_norm
 from top_down_bottom_up.nonlinear_layer import nonlinear_layer
 
 
-def build_classifier(method, par, in_dim, out_dim):
+def build_classifier(method, par, in_dim, out_dim, nhid=None):
     classifier_par = par
     if method == "weight_norm_classifier":
         return WeightNormClassifier(in_dim, out_dim, **classifier_par)
@@ -20,6 +20,8 @@ def build_classifier(method, par, in_dim, out_dim):
         return logit_classifier(in_dim, out_dim, **classifier_par)
     elif method == "linear_classifier":
         return LinearClassifier(in_dim, out_dim)
+    elif method == "adversarial_classifier":
+        return AdversarialClassifier(in_dim, out_dim, nhid)
     else:
         raise NotImplementedError("unknown classifier %s" % method)
 
@@ -75,3 +77,18 @@ class LinearClassifier(nn.Module):
 
     def forward(self, x):
         return self.lc(x)
+
+
+class AdversarialClassifier(nn.Module):
+    def __init__(self, in_dim, out_dim, nhid):
+        super(AdversarialClassifier, self).__init__()
+        self.nhid = nhid
+        layers = [
+            nn.Linear(in_dim, nhid),
+            nn.ReLU(),
+            nn.Linear(in_dim, out_dim)
+        ]
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.main(x)

@@ -142,11 +142,13 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
 def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
-                    scheduler=None):
+                    scheduler=None, adv_scheduler=None):
     report_interval = cfg.training_parameters.report_interval
     snapshot_interval = cfg.training_parameters.snapshot_interval
 
     max_iter = cfg.training_parameters.max_iter
+
+    adversary_backprop_freq = cfg.training_parameters.adversary_backprop_freq
 
     main_avg_accuracy = adv_avg_accuracy = 0
     accuracy_decay = 0.99
@@ -170,8 +172,8 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             if i_iter > max_iter:
                 break
 
-            # TODO: Add scheduler for adv_optim
             scheduler.step(i_iter)
+            adv_scheduler.step(i_iter)
 
             # Run main model
             main_scores, main_loss, n_sample = compute_a_batch(batch,
@@ -180,14 +182,16 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                                eval_mode=False,
                                                                loss_criterion=loss_criterion)
             main_optimizer.zero_grad()
+            adv_optimizer.zero_grad()
+
             main_loss.backward()
             main_accuracy = main_scores / n_sample
             main_avg_accuracy += (1 - accuracy_decay) * (main_accuracy - main_avg_accuracy)
             main_score_epoch += main_scores
             n_sample_tot += n_sample
-            clip_gradients(main_model, i_iter, main_writer)
-            check_params_and_grads(main_model)
-            main_optimizer.step()
+            # clip_gradients(main_model, i_iter, main_writer)
+            # check_params_and_grads(main_model)
+            # main_optimizer.step()
 
             # Run adv model
             adv_scores, adv_loss, n_sample = compute_a_batch(batch,
@@ -195,13 +199,25 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                              run_fn=one_stage_run_adv,
                                                              eval_mode=False,
                                                              loss_criterion=loss_criterion)
-            adv_optimizer.zero_grad()
-            adv_loss.backward()
+
             adv_accuracy = adv_scores / n_sample
             adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
-            clip_gradients(adv_model, i_iter, adv_writer)
-            check_params_and_grads(adv_model)
-            adv_optimizer.step()
+
+            if i_iter % adversary_backprop_freq == 0:
+                # adv_optimizer.zero_grad()
+                adv_loss.backward()
+                # clip_gradients(adv_model, i_iter, adv_writer)
+                # check_params_and_grads(adv_model)
+
+            clip_gradients(main_model, i_iter, main_writer)
+            check_params_and_grads(main_model)
+            main_optimizer.step()
+
+            if i_iter % adversary_backprop_freq == 0:
+                clip_gradients(adv_model, i_iter, adv_writer)
+                check_params_and_grads(adv_model)
+                adv_optimizer.step()
+
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, main_loss.item(), main_accuracy, main_avg_accuracy, report_timer,
@@ -209,7 +225,6 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 save_a_report(i_iter, adv_loss.item(), adv_accuracy, adv_avg_accuracy, report_timer,
                               adv_writer, data_reader_eval, adv_model, 'adv', loss_criterion)
 
-            # TODO: Save adversary model
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
                 main_train_acc = main_score_epoch / n_sample_tot
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, main_model, adv_model,
