@@ -11,6 +11,7 @@ import torch.nn as nn
 import sys
 import os
 from torch.autograd import Variable
+from torch.distributions.categorical import Categorical
 from global_variables.global_variables import use_cuda
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
@@ -42,10 +43,10 @@ def clip_gradients(myModel, i_iter, writer):
     clip_norm_mode = cfg.training_parameters.clip_norm_mode
     if max_grad_l2_norm is not None:
         if clip_norm_mode == 'all':
-            norm = nn.utils.clip_grad_norm(myModel.parameters(), max_grad_l2_norm)
+            norm = nn.utils.clip_grad_norm_(myModel.parameters(), max_grad_l2_norm)
             writer.add_scalar('grad_norm', norm, i_iter)
         elif clip_norm_mode == 'question':
-            norm = nn.utils.clip_grad_norm(myModel.module.question_embedding_models.parameters(),
+            norm = nn.utils.clip_grad_norm_(myModel.module.question_embedding_models.parameters(),
                                             max_grad_l2_norm)
             writer.add_scalar('question_grad_norm', norm, i_iter)
         else:
@@ -74,7 +75,7 @@ def check_params_and_grads(myModel):
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
                   my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
-    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
+    _, val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
     print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
@@ -149,6 +150,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
     max_iter = cfg.training_parameters.max_iter
 
     adversary_backprop_freq = cfg.training_parameters.adversary_backprop_freq
+    lambda_q = cfg.training_parameters.lambda_q
 
     main_avg_accuracy = adv_avg_accuracy = 0
     accuracy_decay = 0.99
@@ -175,48 +177,54 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             scheduler.step(i_iter)
             adv_scheduler.step(i_iter)
 
+            main_writer.add_scalar('learning_rate', scheduler.get_lr()[0], i_iter)
+            adv_writer.add_scalar('learning_rate', adv_scheduler.get_lr()[0], i_iter)
+
             # Run main model
-            main_scores, main_loss, n_sample = compute_a_batch(batch,
+            main_optimizer.zero_grad()
+            main_logits, main_scores, main_loss, n_sample = compute_a_batch(batch,
                                                                main_model,
                                                                run_fn=one_stage_run_model,
                                                                eval_mode=False,
                                                                loss_criterion=loss_criterion)
-            main_optimizer.zero_grad()
-            adv_optimizer.zero_grad()
 
             main_loss.backward()
+            main_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
+            main_writer.add_scalar('Q_norm', main_qnorm, i_iter)
+
             main_accuracy = main_scores / n_sample
             main_avg_accuracy += (1 - accuracy_decay) * (main_accuracy - main_avg_accuracy)
             main_score_epoch += main_scores
             n_sample_tot += n_sample
-            # clip_gradients(main_model, i_iter, main_writer)
-            # check_params_and_grads(main_model)
-            # main_optimizer.step()
-
-            # Run adv model
-            adv_scores, adv_loss, n_sample = compute_a_batch(batch,
-                                                             adv_model,
-                                                             run_fn=one_stage_run_adv,
-                                                             eval_mode=False,
-                                                             loss_criterion=loss_criterion)
-
-            adv_accuracy = adv_scores / n_sample
-            adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
-
-            if i_iter % adversary_backprop_freq == 0:
-                # adv_optimizer.zero_grad()
-                adv_loss.backward()
-                # clip_gradients(adv_model, i_iter, adv_writer)
-                # check_params_and_grads(adv_model)
 
             clip_gradients(main_model, i_iter, main_writer)
             check_params_and_grads(main_model)
             main_optimizer.step()
 
+            # Run adv model
+            adv_optimizer.zero_grad()
+            adv_logits, adv_scores, adv_loss, n_sample = compute_a_batch(batch,
+                                                             adv_model,
+                                                             run_fn=one_stage_run_adv,
+                                                             eval_mode=False,
+                                                             loss_criterion=loss_criterion)
+
+            adv_loss *= lambda_q
+
+            adv_accuracy = adv_scores / n_sample
+            adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
+
             if i_iter % adversary_backprop_freq == 0:
-                clip_gradients(adv_model, i_iter, adv_writer)
-                check_params_and_grads(adv_model)
-                adv_optimizer.step()
+                adv_loss.backward()
+                adv_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
+                adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
+
+            clip_gradients(adv_model, i_iter, adv_writer)
+            check_params_and_grads(adv_model)
+            adv_optimizer.step()
+
+            # main_entropy = Categorical(logits=main_logits).entropy()
+            # adv_entropy = Categorical(logits=adv_logits).entropy()
 
 
             if i_iter % report_interval == 0:
@@ -267,7 +275,7 @@ def compute_a_batch(batch, main_model, run_fn, eval_mode, loss_criterion=None):
     scores = torch.sum(compute_score_with_logits(logits, obs_res.data))
     loss = None if loss_criterion is None else loss_criterion(logits, obs_res)
 
-    return scores, loss, n_sample
+    return logits, scores, loss, n_sample
 
 
 def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=None):
@@ -275,7 +283,7 @@ def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=No
     n_sample_tot = 0
     loss_tot = 0
     for batch in tqdm(data_reader_eval):
-        score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
+        _, score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
@@ -348,3 +356,20 @@ def get_run_fn(model_type):
         return one_stage_run_adv
     else:
         raise ValueError(model_type)
+
+
+# Like clip_grad_norm_() but just returns the grad norm without clipping
+def get_grad_norm(parameters, norm_type=2):
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = list(filter(lambda p: p.grad is not None, parameters))
+    norm_type = float(norm_type)
+    if norm_type == float('inf'):
+        total_norm = max(p.grad.data.abs().max() for p in parameters)
+    else:
+        total_norm = 0
+        for p in parameters:
+            param_norm = p.grad.data.norm(norm_type)
+            total_norm += param_norm.item() ** norm_type
+        total_norm = total_norm ** (1. / norm_type)
+    return total_norm

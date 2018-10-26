@@ -91,7 +91,7 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
         f_name = '%d' % seed
 
     if suffix:
-        f_name += suffix
+        f_name += "_" + suffix
 
     return m_name, f_name
 
@@ -205,6 +205,9 @@ def main(argv):
 
     adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
         **cfg.adv_optimizer.par)
+
+    # adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.classifier.parameters(),
+    #     **cfg.adv_optimizer.par)
 
     i_epoch = 0
     i_iter = 0

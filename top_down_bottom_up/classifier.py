@@ -86,7 +86,7 @@ class AdversarialClassifier(nn.Module):
         layers = [
             nn.Linear(in_dim, nhid),
             nn.ReLU(),
-            nn.Linear(in_dim, out_dim)
+            nn.Linear(nhid, out_dim)
         ]
         self.main = nn.Sequential(*layers)
 
