@@ -41,10 +41,10 @@ def clip_gradients(myModel, i_iter, writer):
     clip_norm_mode = cfg.training_parameters.clip_norm_mode
     if max_grad_l2_norm is not None:
         if clip_norm_mode == 'all':
-            norm = nn.utils.clip_grad_norm(myModel.parameters(), max_grad_l2_norm)
+            norm = nn.utils.clip_grad_norm_(myModel.parameters(), max_grad_l2_norm)
             writer.add_scalar('grad_norm', norm, i_iter)
         elif clip_norm_mode == 'question':
-            norm = nn.utils.clip_grad_norm(myModel.module.question_embedding_models.parameters(),
+            norm = nn.utils.clip_grad_norm_(myModel.module.question_embedding_models.parameters(),
                                             max_grad_l2_norm)
             writer.add_scalar('question_grad_norm', norm, i_iter)
         else:
@@ -68,11 +68,11 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
     sys.stdout.flush()
     report_timer.start()
 
-    writer.add_scalar('main/loss/train', train_loss, i_iter)
-    writer.add_scalar('main/score/train', train_acc, i_iter)
-    writer.add_scalar('main/score_avg/train', train_avg_acc, i_iter)
-    writer.add_scalar('main/score/val', val_acc, i_iter)
-    writer.add_scalar('main/loss/val', val_loss.item(), i_iter)
+    writer.add_scalar('loss/train', train_loss, i_iter)
+    writer.add_scalar('score/train', train_acc, i_iter)
+    writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
+    writer.add_scalar('score/val', val_acc, i_iter)
+    writer.add_scalar('loss/val', val_loss.item(), i_iter)
     for name, param in myModel.named_parameters():
         writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
