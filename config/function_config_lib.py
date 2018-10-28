@@ -131,6 +131,15 @@ adamax_opt.lr = 0.01
 adamax_opt.weight_decay = 0
 adamax_opt.eps = 0.00000001
 
+# --------------------------------------------------------------------------- #
+# Adversarial optimizer
+# --------------------------------------------------------------------------- #
+adv_opt = AttrDict()
+adv_opt.lr = 0.01
+adv_opt.weight_decay = 0
+adv_opt.eps = 0.00000001
+
+
 # SUMMARY of all model parameters
 MODEL_TYPE_PAR_DICT = {
     'linear_transform': linear_transform,
@@ -140,6 +149,7 @@ MODEL_TYPE_PAR_DICT = {
     'att_que_embed': QUESTION_MODEL['att_que_embed'],
     'logit_classifier': logit_classifier,
     'Adamax': adamax_opt,
+    'adv_opt': adv_opt,
     'default_image': IMAGE_FEATURE_MODEL['default'],
     'finetune_faster_rcnn_fpn_fc7':
         IMAGE_FEATURE_MODEL['finetune_faster_rcnn_fpn_fc7'],

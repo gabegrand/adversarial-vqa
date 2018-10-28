@@ -189,6 +189,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                                loss_criterion=loss_criterion)
 
             main_loss.backward()
+            
             main_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
             main_writer.add_scalar('Q_norm', main_qnorm, i_iter)
 
@@ -202,26 +203,29 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             main_optimizer.step()
 
             # Run adv model
-            adv_optimizer.zero_grad()
-            adv_logits, adv_scores, adv_loss, n_sample = compute_a_batch(batch,
-                                                             adv_model,
-                                                             run_fn=one_stage_run_adv,
-                                                             eval_mode=False,
-                                                             loss_criterion=loss_criterion)
+            if lambda_q > 0:
+                adv_optimizer.zero_grad()
+                adv_logits, adv_scores, adv_loss, n_sample = compute_a_batch(batch,
+                                                                 adv_model,
+                                                                 run_fn=one_stage_run_adv,
+                                                                 eval_mode=False,
+                                                                 loss_criterion=loss_criterion)
 
-            adv_loss *= lambda_q
+                adv_accuracy = adv_scores / n_sample
+                adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
 
-            adv_accuracy = adv_scores / n_sample
-            adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
-
-            if i_iter % adversary_backprop_freq == 0:
+                adv_loss *= lambda_q
                 adv_loss.backward()
+
                 adv_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
 
-            clip_gradients(adv_model, i_iter, adv_writer)
-            check_params_and_grads(adv_model)
-            adv_optimizer.step()
+                clip_gradients(adv_model, i_iter, adv_writer)
+                check_params_and_grads(adv_model)
+                adv_optimizer.step()
+            else:
+                adv_accuracy = 0
+                adv_loss = torch.zeros(1)
 
             # main_entropy = Categorical(logits=main_logits).entropy()
             # adv_entropy = Categorical(logits=adv_logits).entropy()

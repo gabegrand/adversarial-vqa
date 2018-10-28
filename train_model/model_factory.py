@@ -103,7 +103,7 @@ def prepare_model(num_vocab_txt, num_choices, **model_config):
         out_dim=num_choices,
         nhid=256)
     adv_model = adversarial_vqa_model(question_embeding_models, adv_classifier,
-                                      model_config['adversarial_lambda'])
+                                      model_config['lambda_grl'])
 
     if use_cuda:
         main_model = main_model.cuda()

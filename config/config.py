@@ -63,14 +63,12 @@ __C.training_parameters.clip_norm_mode = 'all'
 __C.training_parameters.max_grad_l2_norm = 0.25
 __C.training_parameters.wu_factor = 0.2
 __C.training_parameters.wu_iters = 1000
-# __C.training_parameters.max_iter = 12000
-__C.training_parameters.max_iter = 9000
+__C.training_parameters.max_iter = 10000
 __C.training_parameters.lr_steps = [5000, 7000, 9000, 11000]
 __C.training_parameters.lr_ratio = 0.1
-__C.training_parameters.adversarial_lambda = 1
-__C.training_parameters.adversary_backprop_freq = 1
+
+__C.training_parameters.lambda_grl = 1
 __C.training_parameters.lambda_q = 0.1
-# __C.training_parameters.adversary_start = 1000
 
 # --------------------------------------------------------------------------- #
 # loss options:
@@ -87,7 +85,7 @@ __C.optimizer = ModelParPair('Adamax')
 # --------------------------------------------------------------------------- #
 # adv_optimizer options:
 # --------------------------------------------------------------------------- #
-__C.adv_optimizer = ModelParPair('Adamax')
+__C.adv_optimizer = ModelParPair('adv_opt')
 
 
 # --------------------------------------------------------------------------- #
