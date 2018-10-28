@@ -149,7 +149,6 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
     max_iter = cfg.training_parameters.max_iter
 
-    adversary_backprop_freq = cfg.training_parameters.adversary_backprop_freq
     lambda_q = cfg.training_parameters.lambda_q
 
     main_avg_accuracy = adv_avg_accuracy = 0
@@ -161,6 +160,11 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
     iepoch = start_epoch
     snapshot_timer = Timer('m')
     report_timer = Timer('s')
+
+    if hasattr(main_model, 'module'):
+        q_emb = main_model.module.question_embedding_models
+    else:
+        q_emb = main_model.question_embedding_models
 
     print("MAX ITER: {}".format(max_iter))
 
@@ -189,8 +193,8 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                                loss_criterion=loss_criterion)
 
             main_loss.backward()
-            
-            main_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
+
+            main_qnorm = get_grad_norm(q_emb.parameters())
             main_writer.add_scalar('Q_norm', main_qnorm, i_iter)
 
             main_accuracy = main_scores / n_sample
@@ -217,7 +221,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_loss *= lambda_q
                 adv_loss.backward()
 
-                adv_qnorm = get_grad_norm(main_model.question_embedding_models.parameters())
+                adv_qnorm = get_grad_norm(q_emb.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
 
                 clip_gradients(adv_model, i_iter, adv_writer)
