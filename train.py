@@ -180,6 +180,10 @@ def main(argv):
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
+    print("lambda_q: {}".format(cfg.training_parameters.lambda_q))
+    print("lambda_h: {}".format(cfg.training_parameters.lambda_h))
+    print("lambda_grl: {}".format(cfg.training_parameters.lambda_grl))
+
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")
     dump_config(cfg, config_to_write)
@@ -206,8 +210,8 @@ def main(argv):
     adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
         **cfg.adv_optimizer.par)
 
-    # adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.classifier.parameters(),
-    #     **cfg.adv_optimizer.par)
+    qemb_optim = getattr(optim, cfg.optimizer.method)(
+        model.question_embedding_models.parameters(), **cfg.adv_optimizer.par)
 
     i_epoch = 0
     i_iter = 0
@@ -225,11 +229,13 @@ def main(argv):
             main_optim.load_state_dict(info['optimizer'])
             adv_model.load_state_dict(info['adv_state_dict'])
             adv_optim.load_state_dict(info['adv_optimizer'])
+            qemb_optim.load_state_dict(info['qemb_optimizer'])
             if 'best_val_accuracy' in info:
                 best_accuracy = info['best_val_accuracy']
 
     scheduler = get_optim_scheduler(main_optim)
     adv_scheduler = get_optim_scheduler(adv_optim)
+    qemb_scheduler = get_optim_scheduler(qemb_optim)
 
     my_loss = get_loss_criterion(cfg.loss)
 
@@ -251,11 +257,12 @@ def main(argv):
     one_stage_train(main_model,
                     adv_model,
                     data_reader_trn,
-                    main_optim, adv_optim,
+                    main_optim, adv_optim, qemb_optim,
                     my_loss, data_reader_eval=data_reader_val,
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
                     scheduler=scheduler, adv_scheduler=adv_scheduler,
+                    qemb_scheduler=qemb_scheduler,
                     best_val_accuracy=best_accuracy)
     print("=> Training complete.")
 

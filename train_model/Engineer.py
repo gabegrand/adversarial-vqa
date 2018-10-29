@@ -38,17 +38,19 @@ def compute_score_with_logits(logits, labels):
     return scores
 
 
-def clip_gradients(myModel, i_iter, writer):
+def clip_gradients(myModel, i_iter, writer=None):
     max_grad_l2_norm = cfg.training_parameters.max_grad_l2_norm
     clip_norm_mode = cfg.training_parameters.clip_norm_mode
     if max_grad_l2_norm is not None:
         if clip_norm_mode == 'all':
             norm = nn.utils.clip_grad_norm_(myModel.parameters(), max_grad_l2_norm)
-            writer.add_scalar('grad_norm', norm, i_iter)
+            if writer:
+                writer.add_scalar('grad_norm', norm, i_iter)
         elif clip_norm_mode == 'question':
             norm = nn.utils.clip_grad_norm_(myModel.module.question_embedding_models.parameters(),
                                             max_grad_l2_norm)
-            writer.add_scalar('question_grad_norm', norm, i_iter)
+            if writer:
+                writer.add_scalar('question_grad_norm', norm, i_iter)
         else:
             raise NotImplementedError
 
@@ -141,15 +143,16 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
 
 
 def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_optimizer,
-                    loss_criterion, snapshot_dir, log_dir,
+                    qemb_optimizer, loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
-                    scheduler=None, adv_scheduler=None):
+                    scheduler=None, adv_scheduler=None, qemb_scheduler=None):
     report_interval = cfg.training_parameters.report_interval
     snapshot_interval = cfg.training_parameters.snapshot_interval
 
     max_iter = cfg.training_parameters.max_iter
 
     lambda_q = cfg.training_parameters.lambda_q
+    lambda_h = cfg.training_parameters.lambda_h
 
     main_avg_accuracy = adv_avg_accuracy = 0
     accuracy_decay = 0.99
@@ -192,7 +195,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                                eval_mode=False,
                                                                loss_criterion=loss_criterion)
 
-            main_loss.backward()
+            main_loss.backward(retain_graph=True)
 
             main_qnorm = get_grad_norm(q_emb.parameters())
             main_writer.add_scalar('Q_norm', main_qnorm, i_iter)
@@ -209,7 +212,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             # Run adv model
             if lambda_q > 0:
                 adv_optimizer.zero_grad()
-                adv_logits, adv_scores, adv_loss, n_sample = compute_a_batch(batch,
+                adv_logits, adv_scores, adv_loss_q, n_sample = compute_a_batch(batch,
                                                                  adv_model,
                                                                  run_fn=one_stage_run_adv,
                                                                  eval_mode=False,
@@ -218,8 +221,8 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_accuracy = adv_scores / n_sample
                 adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
 
-                adv_loss *= lambda_q
-                adv_loss.backward()
+                adv_loss = lambda_q * adv_loss_q
+                adv_loss.backward(retain_graph=True)
 
                 adv_qnorm = get_grad_norm(q_emb.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
@@ -231,8 +234,25 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_accuracy = 0
                 adv_loss = torch.zeros(1)
 
-            # main_entropy = Categorical(logits=main_logits).entropy()
-            # adv_entropy = Categorical(logits=adv_logits).entropy()
+            # Compute difference of entropy loss
+            # TODO: Does zeroing the grad here cause problems?
+            if lambda_h > 0:
+                qemb_optimizer.zero_grad()
+
+                main_entropy = Categorical(logits=main_logits).entropy()
+                adv_entropy = Categorical(logits=adv_logits).entropy()
+                entropy_diff = adv_entropy - main_entropy
+                entropy_loss = lambda_h * entropy_diff.mean()
+
+                entropy_loss.backward()
+
+                clip_gradients(q_emb, i_iter, writer=None)
+                check_params_and_grads(q_emb)
+                qemb_optimizer.step()
+
+                main_writer.add_scalar('entropy', main_entropy.mean(), i_iter)
+                adv_writer.add_scalar('entropy', adv_entropy.mean(), i_iter)
+                main_writer.add_scalar('entropy/loss', entropy_loss, i_iter)                
 
 
             if i_iter % report_interval == 0:
