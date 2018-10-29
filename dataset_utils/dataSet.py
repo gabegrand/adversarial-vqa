@@ -10,6 +10,7 @@ import os
 from torch.utils.data import Dataset
 from dataset_utils import text_processing
 import numpy as np
+from tqdm import tqdm
 from global_variables.global_variables import imdb_version
 
 
@@ -212,7 +213,7 @@ class vqa_dataset(Dataset):
             self.featDict = {}
             image_count = 0
             image_dir0 = self.image_feat_directories[0]
-            for feat_file in os.listdir(image_dir0):
+            for feat_file in tqdm(os.listdir(image_dir0)):
                 if feat_file.endswith("npy"):
                     image_feats = read_in_image_feats(
                         self.image_feat_directories,
