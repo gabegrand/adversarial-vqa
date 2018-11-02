@@ -183,12 +183,14 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
             scheduler.step(i_iter)
             adv_scheduler.step(i_iter)
+            qemb_scheduler.step(i_iter)
 
             main_writer.add_scalar('learning_rate', scheduler.get_lr()[0], i_iter)
             adv_writer.add_scalar('learning_rate', adv_scheduler.get_lr()[0], i_iter)
 
             # Run main model
             main_optimizer.zero_grad()
+
             main_logits, main_scores, main_loss, n_sample = compute_a_batch(batch,
                                                                main_model,
                                                                run_fn=one_stage_run_model,
@@ -196,6 +198,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                                                                loss_criterion=loss_criterion)
 
             main_loss.backward(retain_graph=True)
+            # main_loss.backward()
 
             main_qnorm = get_grad_norm(q_emb.parameters())
             main_writer.add_scalar('Q_norm', main_qnorm, i_iter)
@@ -209,9 +212,12 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             check_params_and_grads(main_model)
             main_optimizer.step()
 
+
             # Run adv model
+            adv_optimizer.zero_grad()
+            qemb_optimizer.zero_grad()
             if lambda_q > 0:
-                adv_optimizer.zero_grad()
+
                 adv_logits, adv_scores, adv_loss_q, n_sample = compute_a_batch(batch,
                                                                  adv_model,
                                                                  run_fn=one_stage_run_adv,
@@ -223,36 +229,43 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
                 adv_loss = lambda_q * adv_loss_q
                 adv_loss.backward(retain_graph=True)
+                # adv_loss.backward()
 
                 adv_qnorm = get_grad_norm(q_emb.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
 
-                clip_gradients(adv_model, i_iter, adv_writer)
-                check_params_and_grads(adv_model)
+                # clip_gradients(adv_model, i_iter, adv_writer)
+                # check_params_and_grads(adv_model)
+                clip_gradients(adv_model.classifier, i_iter, adv_writer)
+                check_params_and_grads(adv_model.classifier)
                 adv_optimizer.step()
+
+                if i_iter > 1000:
+                    clip_gradients(q_emb, i_iter, writer=None)
+                    check_params_and_grads(q_emb)
+                    qemb_optimizer.step()
             else:
                 adv_accuracy = 0
                 adv_loss = torch.zeros(1)
 
             # Compute difference of entropy loss
             # TODO: Does zeroing the grad here cause problems?
-            if lambda_h > 0:
-                qemb_optimizer.zero_grad()
+            # if lambda_h > 0:
 
-                main_entropy = Categorical(logits=main_logits).entropy()
-                adv_entropy = Categorical(logits=adv_logits).entropy()
-                entropy_diff = adv_entropy - main_entropy
-                entropy_loss = lambda_h * entropy_diff.mean()
 
-                entropy_loss.backward()
+            # main_entropy = Categorical(logits=main_logits).entropy()
+            # adv_entropy = Categorical(logits=adv_logits).entropy()
+            # entropy_diff = adv_entropy - main_entropy
+            # entropy_loss = lambda_h * entropy_diff.mean()
+            # entropy_loss.backward()
+            # if i_iter > 1000:
+            #     clip_gradients(q_emb, i_iter, writer=None)
+            #     check_params_and_grads(q_emb)
+            #     qemb_optimizer.step()
 
-                clip_gradients(q_emb, i_iter, writer=None)
-                check_params_and_grads(q_emb)
-                qemb_optimizer.step()
-
-                main_writer.add_scalar('entropy', main_entropy.mean(), i_iter)
-                adv_writer.add_scalar('entropy', adv_entropy.mean(), i_iter)
-                main_writer.add_scalar('entropy/loss', entropy_loss, i_iter)                
+            # main_writer.add_scalar('entropy', main_entropy.mean(), i_iter)
+            # adv_writer.add_scalar('entropy', adv_entropy.mean(), i_iter)
+            # main_writer.add_scalar('entropy/loss', entropy_loss, i_iter)
 
 
             if i_iter % report_interval == 0:

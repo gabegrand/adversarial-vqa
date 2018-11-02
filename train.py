@@ -207,8 +207,11 @@ def main(argv):
     main_optim = getattr(optim, cfg.optimizer.method)(
         params, **cfg.optimizer.par)
 
-    adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
+    adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.classifier.parameters(),
         **cfg.adv_optimizer.par)
+
+    # adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
+    #     **cfg.adv_optimizer.par)
 
     qemb_optim = getattr(optim, cfg.optimizer.method)(
         model.question_embedding_models.parameters(), **cfg.adv_optimizer.par)
