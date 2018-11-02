@@ -38,17 +38,19 @@ def compute_score_with_logits(logits, labels):
     return scores
 
 
-def clip_gradients(myModel, i_iter, writer):
+def clip_gradients(myModel, i_iter, writer=None):
     max_grad_l2_norm = cfg.training_parameters.max_grad_l2_norm
     clip_norm_mode = cfg.training_parameters.clip_norm_mode
     if max_grad_l2_norm is not None:
         if clip_norm_mode == 'all':
             norm = nn.utils.clip_grad_norm_(myModel.parameters(), max_grad_l2_norm)
-            writer.add_scalar('grad_norm', norm, i_iter)
+            if writer:
+                writer.add_scalar('grad_norm', norm, i_iter)
         elif clip_norm_mode == 'question':
             norm = nn.utils.clip_grad_norm_(myModel.module.question_embedding_models.parameters(),
                                             max_grad_l2_norm)
-            writer.add_scalar('question_grad_norm', norm, i_iter)
+            if writer:
+                writer.add_scalar('question_grad_norm', norm, i_iter)
         else:
             raise NotImplementedError
 
@@ -75,7 +77,7 @@ def check_params_and_grads(myModel):
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
                   my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
-    _, val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
+    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
     print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
@@ -186,7 +188,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
             # Run main model
             main_optimizer.zero_grad()
-            main_logits, main_scores, main_loss, n_sample = compute_a_batch(batch,
+            main_scores, main_loss, n_sample = compute_a_batch(batch,
                                                                main_model,
                                                                run_fn=one_stage_run_model,
                                                                eval_mode=False,
@@ -209,7 +211,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             # Run adv model
             if lambda_q > 0:
                 adv_optimizer.zero_grad()
-                adv_logits, adv_scores, adv_loss, n_sample = compute_a_batch(batch,
+                adv_scores, adv_loss_q, n_sample = compute_a_batch(batch,
                                                                  adv_model,
                                                                  run_fn=one_stage_run_adv,
                                                                  eval_mode=False,
@@ -218,7 +220,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_accuracy = adv_scores / n_sample
                 adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
 
-                adv_loss *= lambda_q
+                adv_loss = lambda_q * adv_loss_q
                 adv_loss.backward()
 
                 adv_qnorm = get_grad_norm(q_emb.parameters())
@@ -230,7 +232,6 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             else:
                 adv_accuracy = 0
                 adv_loss = torch.zeros(1)
-
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, main_loss.item(), main_accuracy, main_avg_accuracy, report_timer,
@@ -280,7 +281,7 @@ def compute_a_batch(batch, main_model, run_fn, eval_mode, loss_criterion=None):
     scores = torch.sum(compute_score_with_logits(logits, obs_res.data))
     loss = None if loss_criterion is None else loss_criterion(logits, obs_res)
 
-    return logits, scores, loss, n_sample
+    return scores, loss, n_sample
 
 
 def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=None):
@@ -288,7 +289,7 @@ def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=No
     n_sample_tot = 0
     loss_tot = 0
     for batch in tqdm(data_reader_eval):
-        _, score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
+        score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
