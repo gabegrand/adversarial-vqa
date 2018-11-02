@@ -231,9 +231,6 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_accuracy = 0
                 adv_loss = torch.zeros(1)
 
-            # main_entropy = Categorical(logits=main_logits).entropy()
-            # adv_entropy = Categorical(logits=adv_logits).entropy()
-
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, main_loss.item(), main_accuracy, main_avg_accuracy, report_timer,

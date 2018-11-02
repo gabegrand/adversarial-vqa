@@ -97,7 +97,9 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
 
 
 def lr_lambda_fun(i_iter):
-    if i_iter <= cfg.training_parameters.wu_iters:
+    if cfg.training_parameters.simple_lr:
+        return 1
+    elif i_iter <= cfg.training_parameters.wu_iters:
         alpha = float(i_iter) / float(cfg.training_parameters.wu_iters)
         return cfg.training_parameters.wu_factor * (1. - alpha) + alpha
     else:
@@ -180,6 +182,9 @@ def main(argv):
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
+    print("lambda_q: {}".format(cfg.training_parameters.lambda_q))
+    print("lambda_grl: {}".format(cfg.training_parameters.lambda_grl))
+
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")
     dump_config(cfg, config_to_write)
@@ -205,9 +210,6 @@ def main(argv):
 
     adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
         **cfg.adv_optimizer.par)
-
-    # adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.classifier.parameters(),
-    #     **cfg.adv_optimizer.par)
 
     i_epoch = 0
     i_iter = 0

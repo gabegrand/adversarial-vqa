@@ -69,6 +69,7 @@ __C.training_parameters.lr_ratio = 0.1
 
 __C.training_parameters.lambda_grl = 1
 __C.training_parameters.lambda_q = 0.1
+__C.training_parameters.simple_lr = True
 
 # --------------------------------------------------------------------------- #
 # loss options:
