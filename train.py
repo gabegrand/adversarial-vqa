@@ -182,8 +182,13 @@ def main(argv):
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
+    print("Adversary nhid: {}".format(cfg.adv_model.nhid))
+
     print("lambda_q: {}".format(cfg.training_parameters.lambda_q))
     print("lambda_grl: {}".format(cfg.training_parameters.lambda_grl))
+
+    print("LRs: {} {}".format(cfg.optimizer.par.lr, cfg.adv_optimizer.par.lr))
+    print("Simple LR: {}".format(cfg.training_parameters.simple_lr))
 
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")

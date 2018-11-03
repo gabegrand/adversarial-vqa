@@ -29,10 +29,16 @@ model:
   - method: att_que_embed
     par:
       embedding_init_file: vqa_v2_cp/vqa2.0_glove.6B.300d.txt.npy
+adv_model:
+  nhid: 256
 training_parameters:
   lambda_grl: 1
   lambda_q: 1
+optimizer:
+  method: Adamax
+  par:
+    lr: 0.001
 adv_optimizer:
   method: adv_opt
   par:
-    lr: 0.01
+    lr: 0.001

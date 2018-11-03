@@ -205,7 +205,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
             n_sample_tot += n_sample
 
             clip_gradients(main_model, i_iter, main_writer)
-            check_params_and_grads(main_model)
+            assert(check_params_and_grads(main_model))
             main_optimizer.step()
 
             # Run adv model
@@ -227,7 +227,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
 
                 clip_gradients(adv_model, i_iter, adv_writer)
-                check_params_and_grads(adv_model)
+                assert(check_params_and_grads(adv_model))
                 adv_optimizer.step()
             else:
                 adv_accuracy = 0

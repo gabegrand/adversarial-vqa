@@ -106,3 +106,6 @@ top_down_bottom_up.transform = ModelParPair('linear_transform')
 top_down_bottom_up.normalization = 'softmax'
 
 __C.model.image_embedding_models.append(top_down_bottom_up)
+
+__C.adv_model = AttrDict()
+__C.adv_model.nhid = 256
