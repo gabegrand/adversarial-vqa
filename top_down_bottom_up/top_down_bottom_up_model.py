@@ -121,8 +121,14 @@ class adversarial_vqa_model(nn.Module):
             lambda_grl):
         super(adversarial_vqa_model, self).__init__()
         self.question_embedding_models = question_embedding_models
+        self.reversal_layer = GradReverse(lambda_grl)
         self.classifier = classifier
-        self.lambda_grl = lambda_grl
+
+    def get_lambda(self):
+        return(self.reversal_layer.lambd)
+
+    def set_lambda(self, lambd):
+        self.reversal_layer.lambd = lambd
 
     def forward(self, input_question_variable):
         question_embeddings = []
@@ -131,8 +137,7 @@ class adversarial_vqa_model(nn.Module):
             question_embeddings.append(q_embedding)
         question_embedding_total = torch.cat(question_embeddings, dim=1)
 
-        classifier_input = grad_reverse(question_embedding_total,
-                                        self.lambda_grl)
+        classifier_input = self.reversal_layer(question_embedding_total)
         logit_res = self.classifier(classifier_input)
 
         return logit_res
@@ -143,14 +148,11 @@ Gradient reversal layer from https://discuss.pytorch.org/t/solved-reverse-gradie
 """
 class GradReverse(Function):
 
-    def __init__(self, lambd=1.0):
+    def __init__(self, lambd=-1.0):
         self.lambd = lambd
 
     def forward(self, x):
         return x.view_as(x)
 
     def backward(self, grad_output):
-        return (grad_output * -self.lambd)
-
-def grad_reverse(x, lambd=1.0):
-    return GradReverse(lambd)(x)
+        return (grad_output * self.lambd)

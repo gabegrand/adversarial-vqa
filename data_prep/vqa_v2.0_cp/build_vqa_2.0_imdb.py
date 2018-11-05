@@ -125,12 +125,16 @@ if __name__ == '__main__':
     answer_dict = text_processing.VocabDict(vocab_answer_file)
     valid_answer_set = set(answer_dict.word_list)
 
-    imdb_train = build_imdb('train', valid_answer_set)
+    # make_trainval_split.py splits the train data into train and val
+    imdb_train = build_imdb('trainsplit', valid_answer_set)
+    imdb_val = build_imdb('valsplit', valid_answer_set)
     imdb_test = build_imdb('test', valid_answer_set)
 
     imdb_dir = os.path.join(out_dir, 'imdb')
     os.makedirs(imdb_dir, exist_ok=True)
-    np.save(os.path.join(imdb_dir, 'imdb_train.npy'),
+    np.save(os.path.join(imdb_dir, 'imdb_trainsplit.npy'),
             np.array(imdb_train))
+    np.save(os.path.join(imdb_dir, 'imdb_valsplit.npy'),
+            np.array(imdb_val))
     np.save(os.path.join(imdb_dir, 'imdb_test.npy'),
             np.array(imdb_test))

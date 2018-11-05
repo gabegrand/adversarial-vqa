@@ -32,11 +32,13 @@ def build_model(config, dataset):
 
     num_image_feat = len(config['data']['image_feat_train'][0].split(','))
     lambda_grl = config['training_parameters']['lambda_grl']
+    nhid = config['adv_model']['nhid']
     main_model, adv_model = prepare_model(num_vocab_txt,
                                           num_choices,
                                           **config['model'],
                                           num_image_feat=num_image_feat,
-                                          lambda_grl=lambda_grl)
+                                          lambda_grl=lambda_grl,
+                                          nhid=nhid)
     return main_model, adv_model
 
 

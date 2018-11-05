@@ -97,7 +97,9 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
 
 
 def lr_lambda_fun(i_iter):
-    if i_iter <= cfg.training_parameters.wu_iters:
+    if cfg.training_parameters.simple_lr:
+        return 1
+    elif i_iter <= cfg.training_parameters.wu_iters:
         alpha = float(i_iter) / float(cfg.training_parameters.wu_iters)
         return cfg.training_parameters.wu_factor * (1. - alpha) + alpha
     else:
@@ -180,9 +182,14 @@ def main(argv):
     print("fast data reader = " + str(cfg['data']['image_fast_reader']))
     print("use cuda = " + str(use_cuda))
 
+    print("Adversary nhid: {}".format(cfg.adv_model.nhid))
+
     print("lambda_q: {}".format(cfg.training_parameters.lambda_q))
     print("lambda_h: {}".format(cfg.training_parameters.lambda_h))
     print("lambda_grl: {}".format(cfg.training_parameters.lambda_grl))
+
+    print("LRs: {} {}".format(cfg.optimizer.par.lr, cfg.adv_optimizer.par.lr))
+    print("Simple LR: {}".format(cfg.training_parameters.simple_lr))
 
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")
@@ -209,9 +216,6 @@ def main(argv):
 
     adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.classifier.parameters(),
         **cfg.adv_optimizer.par)
-
-    # adv_optim = getattr(optim, cfg.optimizer.method)(adv_model.parameters(),
-    #     **cfg.adv_optimizer.par)
 
     qemb_optim = getattr(optim, cfg.optimizer.method)(
         model.question_embedding_models.parameters(), **cfg.adv_optimizer.par)
@@ -291,6 +295,9 @@ def main(argv):
                                                       my_loss)
         print("Final results:\nacc: {:.4f}\nloss: {:.4f}".format(acc_test,
                                                                  loss_test))
+        result_file = os.path.join(snapshot_dir, 'result_on_val.txt')
+        with open(result_file, 'a') as fid:
+            fid.write('FINAL RESULT ON TEST: {:.6f}'.format(acc_test))
     else:
         print("File {} not found. Skipping testing.".format(model_file))
         acc_test = loss_test = 0
