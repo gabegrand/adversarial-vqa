@@ -30,7 +30,7 @@ model:
     par:
       embedding_init_file: vqa_v2_cp/vqa2.0_glove.6B.300d.txt.npy
 adv_model:
-  nhid: 256
+  nhid: 512
 training_parameters:
   lambda_grl: 1
   lambda_q: 0.005

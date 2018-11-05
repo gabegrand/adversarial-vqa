@@ -63,7 +63,7 @@ __C.training_parameters.clip_norm_mode = 'all'
 __C.training_parameters.max_grad_l2_norm = 0.25
 __C.training_parameters.wu_factor = 0.2
 __C.training_parameters.wu_iters = 1000
-__C.training_parameters.max_iter = 10000
+__C.training_parameters.max_iter = 16000
 __C.training_parameters.lr_steps = [5000, 7000, 9000, 11000]
 __C.training_parameters.lr_ratio = 0.1
 

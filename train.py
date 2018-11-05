@@ -288,6 +288,9 @@ def main(argv):
                                                       my_loss)
         print("Final results:\nacc: {:.4f}\nloss: {:.4f}".format(acc_test,
                                                                  loss_test))
+        result_file = os.path.join(snapshot_dir, 'result_on_val.txt')
+        with open(result_file, 'a') as fid:
+            fid.write('FINAL RESULT ON TEST: {:.6f}'.format(acc_test))
     else:
         print("File {} not found. Skipping testing.".format(model_file))
         acc_test = loss_test = 0
