@@ -77,7 +77,7 @@ def check_params_and_grads(myModel):
 def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
                   my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
-    val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
+    _, val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
 
     print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
@@ -235,28 +235,28 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_qnorm = get_grad_norm(q_emb.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
 
-                # Compute difference of entropy loss
-                if lambda_h > 0:
-
-                    # Let the gradient flow normally
-                    adv_model.set_lambda(1.0)
-
-                    main_entropy = Categorical(logits=main_logits).entropy()
-                    adv_entropy = Categorical(logits=adv_logits).entropy()
-                    entropy_diff = main_entropy - adv_entropy
-                    entropy_loss = lambda_h * entropy_diff.mean()
-                    entropy_loss.backward()
-
-                    main_writer.add_scalar('entropy', main_entropy.mean(), i_iter)
-                    adv_writer.add_scalar('entropy', adv_entropy.mean(), i_iter)
-                    main_writer.add_scalar('entropy/loss', entropy_loss, i_iter)
-
                 clip_gradients(adv_model.classifier, i_iter, adv_writer)
-                check_params_and_grads(adv_model.classifier)
+                assert(check_params_and_grads(adv_model.classifier))
                 adv_optimizer.step()
 
+                # Compute difference of entropy loss
+                main_entropy = Categorical(logits=main_logits).entropy()
+                adv_entropy = Categorical(logits=adv_logits).entropy()
+                entropy_diff = main_entropy - adv_entropy
+                entropy_loss = lambda_h * entropy_diff.mean()
+
+                main_writer.add_scalar('entropy', main_entropy.mean(), i_iter)
+                adv_writer.add_scalar('entropy', adv_entropy.mean(), i_iter)
+                main_writer.add_scalar('entropy/loss', entropy_loss, i_iter)
+
+                if lambda_h > 0:
+                    # Let the gradient flow normally
+                    adv_model.set_lambda(1.0)
+                    entropy_loss.backward()
+
+                # Even if lambda_h = 0, still update q_emb with adv_loss
                 clip_gradients(q_emb, i_iter, writer=None)
-                check_params_and_grads(q_emb)
+                assert(check_params_and_grads(q_emb))
                 qemb_optimizer.step()
 
             else:
@@ -319,7 +319,7 @@ def one_stage_eval_model(data_reader_eval, main_model, run_fn, loss_criterion=No
     n_sample_tot = 0
     loss_tot = 0
     for batch in tqdm(data_reader_eval):
-        score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
+        _, score, loss, n_sample = compute_a_batch(batch, main_model, run_fn, eval_mode=True, loss_criterion=loss_criterion)
         score_tot += score
         n_sample_tot += n_sample
         if loss is not None:
