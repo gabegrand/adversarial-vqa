@@ -15,9 +15,9 @@ data:
   - rcnn_10_100/vqa/val2014
   image_max_loc: 100
   imdb_file_train:
-  - vqa_v2_cp/imdb/imdb_train.npy
+  - vqa_v2_cp/imdb/imdb_trainsplit.npy
   imdb_file_val:
-  - vqa_v2_cp/imdb/imdb_test.npy
+  - vqa_v2_cp/imdb/imdb_valsplit.npy
   imdb_file_test:
   - vqa_v2_cp/imdb/imdb_test.npy
   num_workers: 5
@@ -33,7 +33,8 @@ adv_model:
   nhid: 256
 training_parameters:
   lambda_grl: 1
-  lambda_q: 1
+  lambda_q: 0.005
+  simple_lr: true
 optimizer:
   method: Adamax
   par:
