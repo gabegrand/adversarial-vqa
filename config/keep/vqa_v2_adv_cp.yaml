@@ -15,9 +15,11 @@ data:
   - rcnn_10_100/vqa/val2014
   image_max_loc: 100
   imdb_file_train:
-  - vqa_v2_cp/imdb/imdb_trainsplit.npy
+  # - vqa_v2_cp/imdb/imdb_trainsplit.npy
+  - vqa_v2_cp/imdb/imdb_train.npy
   imdb_file_val:
-  - vqa_v2_cp/imdb/imdb_valsplit.npy
+  # - vqa_v2_cp/imdb/imdb_valsplit.npy
+  - vqa_v2_cp/imdb/imdb_test.npy
   imdb_file_test:
   - vqa_v2_cp/imdb/imdb_test.npy
   num_workers: 5

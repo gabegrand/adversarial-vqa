@@ -230,7 +230,7 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                 adv_avg_accuracy += (1 - accuracy_decay) * (adv_accuracy - adv_avg_accuracy)
 
                 adv_loss *= lambda_q
-                adv_loss.backward(retain_graph=True)
+                adv_loss.backward(retain_graph=(lambda_h > 0))
 
                 adv_qnorm = get_grad_norm(q_emb.parameters())
                 adv_writer.add_scalar('Q_norm', adv_qnorm, i_iter)
