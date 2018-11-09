@@ -245,6 +245,9 @@ def main(argv):
 
     dataset_val = prepare_eval_data_set(**cfg['data'], **cfg['model'])
     print("=> Loaded valset: {} examples".format(len(dataset_val)))
+    
+    dataset_test = prepare_test_data_set(**cfg['data'], **cfg['model'])
+    print("=> Loaded testset: {} examples".format(len(dataset_test)))
 
     data_reader_trn = DataLoader(dataset=train_dataSet,
                                  batch_size=cfg.data.batch_size,
@@ -254,6 +257,11 @@ def main(argv):
                                  shuffle=True,
                                  batch_size=cfg.data.batch_size,
                                  num_workers=cfg.data.num_workers)
+    data_reader_test = DataLoader(dataset_test,
+                                  shuffle=True,
+                                  batch_size=cfg.data.batch_size,
+                                  num_workers=cfg.data.num_workers)
+
     main_model.train()
     adv_model.train()
 
@@ -262,7 +270,9 @@ def main(argv):
                     adv_model,
                     data_reader_trn,
                     main_optim, adv_optim,
-                    my_loss, data_reader_eval=data_reader_val,
+                    my_loss,
+                    data_reader_eval=data_reader_val,
+                    data_reader_test=data_reader_test,
                     snapshot_dir=snapshot_dir, log_dir=boards_dir,
                     start_epoch=i_epoch, i_iter=i_iter,
                     scheduler=scheduler, adv_scheduler=adv_scheduler,
@@ -272,13 +282,6 @@ def main(argv):
     model_file = os.path.join(snapshot_dir, "best_model.pth")
     if os.path.isfile(model_file):
         print("=> Testing best model...")
-        dataset_test = prepare_test_data_set(**cfg['data'], **cfg['model'])
-        data_reader_test = DataLoader(dataset_test,
-                                      shuffle=True,
-                                      batch_size=cfg.data.batch_size,
-                                      num_workers=cfg.data.num_workers)
-        print("=> Loaded testset: {} examples".format(len(dataset_test)))
-
         main_model, _ = build_model(cfg, dataset_test)
         main_model.load_state_dict(torch.load(model_file)['state_dict'])
         main_model.eval()

@@ -74,11 +74,15 @@ def check_params_and_grads(myModel):
     return params_ok
 
 
-def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval,
+def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, writer, data_reader_eval, data_reader_test,
                   my_model, model_type, loss_criterion):
     val_batch = next(iter(data_reader_eval))
     val_score, val_loss, n_val_sample = compute_a_batch(val_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
     val_acc = val_score / n_val_sample
+
+    test_batch = next(iter(data_reader_test))
+    test_score, test_loss, n_test_sample = compute_a_batch(test_batch, my_model, run_fn=get_run_fn(model_type), eval_mode=True, loss_criterion=loss_criterion)
+    test_acc = test_score / n_test_sample
 
     print("iter:", i_iter, "time(s): % s \n" % report_timer.end(),
           "Model: {}".format(model_type),
@@ -86,7 +90,9 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
           "train_score: %.4f" % train_acc,
           "avg_train_score: %.4f" % train_avg_acc,
           "val_score: %.4f" % val_acc,
-          "val_loss: %.4f" % val_loss.item()
+          "val_loss: %.4f" % val_loss.item(),
+          "test_score: %.4f" % test_acc,
+          "test_loss: %.4f" % test_loss.item(),
           )
     sys.stdout.flush()
     report_timer.start()
@@ -96,6 +102,8 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
     writer.add_scalar('score/avg_train', train_avg_acc, i_iter)
     writer.add_scalar('score/val', val_acc, i_iter)
     writer.add_scalar('loss/val', val_loss.item(), i_iter)
+    writer.add_scalar('score/test', test_acc, i_iter)
+    writer.add_scalar('loss/test', test_loss.item(), i_iter)
     for name, param in my_model.named_parameters():
         writer.add_histogram(name, param.clone().cpu().data.numpy(), i_iter)
 
@@ -103,7 +111,7 @@ def save_a_report(i_iter, train_loss, train_acc, train_avg_acc, report_timer, wr
 def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
                     main_optimizer, adv_optimizer,
                     loss_criterion, best_val_accuracy, best_epoch, best_iter,
-                    snapshot_timer, data_reader_eval, main_train_acc):
+                    snapshot_timer, data_reader_eval, data_reader_test, main_train_acc):
     model_snapshot_file = os.path.join(snapshot_dir, "model_%08d.pth" % i_iter)
     model_result_file = os.path.join(snapshot_dir, "result_on_val.txt")
     save_dic = {
@@ -117,13 +125,17 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
     if data_reader_eval is not None:
         val_accuracy, avg_loss, val_sample_tot = one_stage_eval_model(data_reader_eval, main_model, get_run_fn('main'),
                                                                       loss_criterion=loss_criterion)
-        print("i_epoch:", iepoch, "i_iter:", i_iter, "val_loss:%.4f" % avg_loss,
-              "val_acc:%.4f" % val_accuracy, "runtime: %s" % snapshot_timer.end())
+        test_accuracy, test_avg_loss, test_sample_tot = one_stage_eval_model(data_reader_test, main_model, get_run_fn('main'),
+                                                                             loss_criterion=loss_criterion)
+        print("i_epoch:", iepoch, "i_iter:", i_iter,
+              "val_loss:%.4f" % avg_loss, "val_acc:%.4f" % val_accuracy,
+              "test_loss:%.4f" % test_avg_loss, "test_acc:%.4f" % test_accuracy,
+              "runtime: %s" % snapshot_timer.end())
         snapshot_timer.start()
         sys.stdout.flush()
 
         with open(model_result_file, 'a') as fid:
-            fid.write('%d %d %.5f %.5f\n' % (iepoch, i_iter, val_accuracy, main_train_acc))
+            fid.write('%d %d %.5f %.5f %.5f\n' % (iepoch, i_iter, test_accuracy, val_accuracy, main_train_acc))
 
         if val_accuracy > best_val_accuracy:
             best_val_accuracy = val_accuracy
@@ -156,7 +168,8 @@ def lambda_grl_scheduler(i_iter):
 
 def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
-                    i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
+                    i_iter, start_epoch, best_val_accuracy=0,
+                    data_reader_eval=None, data_reader_test=None,
                     scheduler=None, adv_scheduler=None):
     report_interval = cfg.training_parameters.report_interval
     snapshot_interval = cfg.training_parameters.snapshot_interval
@@ -251,16 +264,16 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
             if i_iter % report_interval == 0:
                 save_a_report(i_iter, main_loss.item(), main_accuracy, main_avg_accuracy, report_timer,
-                              main_writer, data_reader_eval, main_model, 'main', loss_criterion)
+                              main_writer, data_reader_eval, data_reader_test, main_model, 'main', loss_criterion)
                 save_a_report(i_iter, adv_loss.item(), adv_accuracy, adv_avg_accuracy, report_timer,
-                              adv_writer, data_reader_eval, adv_model, 'adv', loss_criterion)
+                              adv_writer, data_reader_eval, data_reader_test, adv_model, 'adv', loss_criterion)
 
             if i_iter % snapshot_interval == 0 or i_iter == max_iter:
                 main_train_acc = main_score_epoch / n_sample_tot
                 best_val_accuracy, best_epoch, best_iter = save_a_snapshot(snapshot_dir, i_iter, iepoch, main_model, adv_model,
                                                                            main_optimizer, adv_optimizer, loss_criterion, best_val_accuracy,
                                                                            best_epoch, best_iter, snapshot_timer,
-                                                                           data_reader_eval, main_train_acc)
+                                                                           data_reader_eval, data_reader_test, main_train_acc)
 
     main_writer.export_scalars_to_json(os.path.join(log_dir, "all_scalars.json"))
     main_writer.close()
