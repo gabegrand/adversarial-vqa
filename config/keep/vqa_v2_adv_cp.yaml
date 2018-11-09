@@ -32,9 +32,9 @@ model:
 adv_model:
   nhid: 512
 training_parameters:
-  lambda_grl: 1
+  lambda_grl: -1.0
   lambda_q: 0.005
-  simple_lr: true
+  static_lr: true
 optimizer:
   method: Adamax
   par:

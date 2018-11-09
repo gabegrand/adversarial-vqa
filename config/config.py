@@ -67,9 +67,12 @@ __C.training_parameters.max_iter = 16000
 __C.training_parameters.lr_steps = [5000, 7000, 9000, 11000]
 __C.training_parameters.lr_ratio = 0.1
 
-__C.training_parameters.lambda_grl = 1
-__C.training_parameters.lambda_q = 1
-__C.training_parameters.simple_lr = True
+__C.training_parameters.lambda_grl = -1.0
+__C.training_parameters.lambda_grl_steps = 0
+__C.training_parameters.lambda_grl_start = 0
+
+__C.training_parameters.lambda_q = 1.0
+__C.training_parameters.static_lr = True
 
 # --------------------------------------------------------------------------- #
 # loss options:

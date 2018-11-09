@@ -97,7 +97,7 @@ def get_output_folder_name(config_basename, cfg_overwrite_obj, seed, suffix):
 
 
 def lr_lambda_fun(i_iter):
-    if cfg.training_parameters.simple_lr:
+    if cfg.training_parameters.static_lr:
         return 1
     elif i_iter <= cfg.training_parameters.wu_iters:
         alpha = float(i_iter) / float(cfg.training_parameters.wu_iters)
@@ -185,10 +185,13 @@ def main(argv):
     print("Adversary nhid: {}".format(cfg.adv_model.nhid))
 
     print("lambda_q: {}".format(cfg.training_parameters.lambda_q))
+
     print("lambda_grl: {}".format(cfg.training_parameters.lambda_grl))
+    print("lambda_grl_start: {}".format(cfg.training_parameters.lambda_grl_start))
+    print("lambda_grl_steps: {}".format(cfg.training_parameters.lambda_grl_steps))
 
     print("LRs: {} {}".format(cfg.optimizer.par.lr, cfg.adv_optimizer.par.lr))
-    print("Simple LR: {}".format(cfg.training_parameters.simple_lr))
+    print("Static LR: {}".format(cfg.training_parameters.static_lr))
 
     # dump the config file to snap_shot_dir
     config_to_write = os.path.join(snapshot_dir, "config.yaml")

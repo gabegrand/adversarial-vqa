@@ -142,6 +142,18 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
     return best_val_accuracy, best_epoch, best_iter
 
 
+def lambda_grl_scheduler(i_iter):
+    lambda_grl = cfg.training_parameters.lambda_grl
+    lambda_grl_start = cfg.training_parameters.lambda_grl_start
+    lambda_grl_steps = cfg.training_parameters.lambda_grl_steps
+    if i_iter < lambda_grl_start:
+        return 0.0
+    elif i_iter - lambda_grl_start < lambda_grl_steps:
+        return ((i_iter - lambda_grl_start) / lambda_grl_steps) * lambda_grl
+    else:
+        return lambda_grl
+
+
 def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_optimizer,
                     loss_criterion, snapshot_dir, log_dir,
                     i_iter, start_epoch, best_val_accuracy=0, data_reader_eval=None,
@@ -210,6 +222,10 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
 
             # Run adv model
             if lambda_q > 0:
+
+                lambda_grl = lambda_grl_scheduler(i_iter)
+                adv_model.set_lambda(lambda_grl)
+
                 adv_optimizer.zero_grad()
                 adv_scores, adv_loss_q, n_sample = compute_a_batch(batch,
                                                                  adv_model,
