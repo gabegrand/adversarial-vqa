@@ -143,13 +143,15 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
             best_iter = i_iter
             best_model_snapshot_file = os.path.join(snapshot_dir, "best_model.pth")
 
-        save_dic['best_val_accuracy'] = best_val_accuracy
-        torch.save(save_dic, model_snapshot_file)
+        # save_dic['best_val_accuracy'] = best_val_accuracy
+        # torch.save(save_dic, model_snapshot_file)
 
         if best_iter == i_iter:
             if os.path.exists(best_model_snapshot_file):
                 os.remove(best_model_snapshot_file)
-            os.link(model_snapshot_file, best_model_snapshot_file)
+            save_dic['best_val_accuracy'] = best_val_accuracy
+            torch.save(save_dic, best_model_snapshot_file)
+            # os.link(model_snapshot_file, best_model_snapshot_file)
 
     return best_val_accuracy, best_epoch, best_iter
 
