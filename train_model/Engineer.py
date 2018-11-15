@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 #
 
-
+import glob
 import torch
 import torch.nn as nn
 import sys
@@ -142,16 +142,22 @@ def save_a_snapshot(snapshot_dir,i_iter, iepoch, main_model, adv_model,
             best_epoch = iepoch
             best_iter = i_iter
             best_model_snapshot_file = os.path.join(snapshot_dir, "best_model.pth")
+            save_dic['best_val_accuracy'] = best_val_accuracy
 
-        # save_dic['best_val_accuracy'] = best_val_accuracy
-        # torch.save(save_dic, model_snapshot_file)
+        # Remove last most recent .pth to save space
+        md_pths = os.path.join(snapshot_dir, "model_*.pth")
+        files = glob.glob(md_pths)
+        if len(files) > 0:
+            latest_file = max(files, key=os.path.getctime)
+            os.remove(latest_file)
 
-        if best_iter == i_iter:
+        save_dic['best_val_accuracy'] = best_val_accuracy
+        torch.save(save_dic, model_snapshot_file)
+
+        if best_iter == i_iter and i_iter > cfg.training_parameters.lambda_grl_start:
             if os.path.exists(best_model_snapshot_file):
                 os.remove(best_model_snapshot_file)
-            save_dic['best_val_accuracy'] = best_val_accuracy
-            torch.save(save_dic, best_model_snapshot_file)
-            # os.link(model_snapshot_file, best_model_snapshot_file)
+            os.link(model_snapshot_file, best_model_snapshot_file)
 
     return best_val_accuracy, best_epoch, best_iter
 
@@ -173,11 +179,12 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                     i_iter, start_epoch, best_val_accuracy=0,
                     data_reader_eval=None, data_reader_test=None,
                     scheduler=None, adv_scheduler=None):
-    report_interval = cfg.training_parameters.report_interval
-    snapshot_interval = cfg.training_parameters.snapshot_interval
+    # report_interval = cfg.training_parameters.report_interval
+    # snapshot_interval = cfg.training_parameters.snapshot_interval
+    report_interval = 5
+    snapshot_interval = 10
 
     max_iter = cfg.training_parameters.max_iter
-
     lambda_q = cfg.training_parameters.lambda_q
 
     main_avg_accuracy = adv_avg_accuracy = 0
