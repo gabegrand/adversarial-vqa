@@ -179,10 +179,8 @@ def one_stage_train(main_model, adv_model, data_reader_trn, main_optimizer, adv_
                     i_iter, start_epoch, best_val_accuracy=0,
                     data_reader_eval=None, data_reader_test=None,
                     scheduler=None, adv_scheduler=None):
-    # report_interval = cfg.training_parameters.report_interval
-    # snapshot_interval = cfg.training_parameters.snapshot_interval
-    report_interval = 5
-    snapshot_interval = 10
+    report_interval = cfg.training_parameters.report_interval
+    snapshot_interval = cfg.training_parameters.snapshot_interval
 
     max_iter = cfg.training_parameters.max_iter
     lambda_q = cfg.training_parameters.lambda_q
