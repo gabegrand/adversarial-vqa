@@ -1,0 +1,44 @@
+run: train
+data:
+  data_root_dir: data/
+  dataset: vqa_v1
+  image_fast_reader: false
+  image_feat_train:
+  - rcnn_10_100/vqa/train2014
+  image_feat_val:
+  - rcnn_10_100/vqa/val2014
+  image_feat_test:
+  # - rcnn_10_100/vqa/test2015
+  - rcnn_10_100/vqa/val2014
+  image_max_loc: 100
+  imdb_file_train:
+  - vqa_v1/imdb/imdb_train2014.npy
+  imdb_file_val:
+  # - imdb/imdb_val2014.npy
+  - vqa_v1/imdb/imdb_minival2014.npy
+  imdb_file_test:
+  - vqa_v1/imdb/imdb_val2014.npy
+  num_workers: 5
+  question_max_len: 14
+  vocab_answer_file: vqa_v1/answers_vqa.txt
+  vocab_question_file: vqa_v1/vocabulary_vqa.txt
+model:
+  question_embedding:
+  - method: att_que_embed
+    par:
+      embedding_init_file: vqa_v1/vqa1.0_glove.6B.300d.txt.npy
+adv_model:
+  nhid: 512
+training_parameters:
+  max_iter: 16000
+  lambda_grl: -1.0
+  lambda_q: 0.005
+  static_lr: true
+optimizer:
+  method: Adamax
+  par:
+    lr: 0.001
+adv_optimizer:
+  method: adv_opt
+  par:
+    lr: 0.001
