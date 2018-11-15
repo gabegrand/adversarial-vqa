@@ -1,7 +1,7 @@
 run: train
 data:
   data_root_dir: data/
-  dataset: vqa_v2_cp
+  dataset: vqa_v1_cp
   image_depth_first: false
   image_fast_reader: false
   image_feat_train:
@@ -15,17 +15,31 @@ data:
   - rcnn_10_100/vqa/val2014
   image_max_loc: 100
   imdb_file_train:
-  - vqa_v2_cp/imdb/imdb_train.npy
+  - vqa_v1_cp/imdb/imdb_trainsplit.npy
   imdb_file_val:
-  - vqa_v2_cp/imdb/imdb_test.npy
+  - vqa_v1_cp/imdb/imdb_valsplit.npy
   imdb_file_test:
-  - vqa_v2_cp/imdb/imdb_test.npy
+  - vqa_v1_cp/imdb/imdb_test.npy
   num_workers: 5
   question_max_len: 14
-  vocab_answer_file: vqa_v2_cp/answers_vqa.txt
-  vocab_question_file: vqa_v2_cp/vocabulary_vqa.txt
+  vocab_answer_file: vqa_v1_cp/answers_vqa.txt
+  vocab_question_file: vqa_v1_cp/vocabulary_vqa.txt
 model:
   question_embedding:
   - method: att_que_embed
     par:
-      embedding_init_file: vqa_v2_cp/vqa2.0_glove.6B.300d.txt.npy
+      embedding_init_file: vqa_v1_cp/vqa2.0_glove.6B.300d.txt.npy
+adv_model:
+  nhid: 512
+training_parameters:
+  lambda_grl: -1.0
+  lambda_q: 0.005
+  static_lr: true
+optimizer:
+  method: Adamax
+  par:
+    lr: 0.001
+adv_optimizer:
+  method: adv_opt
+  par:
+    lr: 0.001
