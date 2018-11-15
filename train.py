@@ -190,6 +190,9 @@ def main(argv):
     print("lambda_grl_start: {}".format(cfg.training_parameters.lambda_grl_start))
     print("lambda_grl_steps: {}".format(cfg.training_parameters.lambda_grl_steps))
 
+    if cfg.training_parameters.lambda_grl > 0:
+        print("WARNING: lambda_grl {} is pos., but GRL expects neg. values".format(cfg.training_parameters.lambda_grl))
+
     print("LRs: {} {}".format(cfg.optimizer.par.lr, cfg.adv_optimizer.par.lr))
     print("Static LR: {}".format(cfg.training_parameters.static_lr))
 
@@ -245,7 +248,7 @@ def main(argv):
 
     dataset_val = prepare_eval_data_set(**cfg['data'], **cfg['model'])
     print("=> Loaded valset: {} examples".format(len(dataset_val)))
-    
+
     dataset_test = prepare_test_data_set(**cfg['data'], **cfg['model'])
     print("=> Loaded testset: {} examples".format(len(dataset_test)))
 
